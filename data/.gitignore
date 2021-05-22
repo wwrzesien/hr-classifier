@@ -1,0 +1,9 @@
+
+# Except .gitignore
+!/.gitignore
+
+# Except compressed datasets
+!/**/*.zip
+
+# Except NumPy arrays
+!/**/*.npy
