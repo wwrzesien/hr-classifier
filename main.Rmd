@@ -1,0 +1,62 @@
+---
+title: "main"
+author: "Wrzesień Wojciech, Grudkowski Artur"
+date: "22 05 2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+source('./src/project_setup.R')
+```
+
+```{r load_src_files}
+source('./src/load_data.R')
+source('./src/transform_types.R')
+source('./src/show_base_stats.R')
+source('./src/remove_missing_vals.R')
+source('./src/add_dummy_vars.R')
+```
+
+
+# Load data
+```{r}
+data <- load_data()
+
+train_base <- data$train 
+# test <- data$test
+```
+
+# Print base stats
+```{r}
+print(train_base)
+show_base_stats(train_base)
+```
+
+# Transform data
+```{r}
+train_base <- data$train %>% transform_types %>% remove_missing_vals %>% slice(1:500) 
+```
+# Add dummy vars
+```{r}
+train_transformed <- train_base %>% transform_types %>% remove_missing_vals %>% slice(1:500)
+
+dummy_model_formula <- as.formula('target ~ . - city')
+dummy_model <- dummyVars(dummy_model_formula, data=train)
+
+train_transformed <- train_transformed %>% add_dummy_vars(dummy_model)
+print(train)
+```
+
+# Train model
+
+
+# Test model
+## Predict
+```{r}
+# add prediction funciton 
+```
+
+## Calculate AOC
+```{r}
+#add aoc
+```
