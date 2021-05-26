@@ -15,6 +15,7 @@ source('./src/transform_types.R')
 source('./src/show_base_stats.R')
 source('./src/remove_missing_vals.R')
 source('./src/add_dummy_vars.R')
+source('./src/create_model_formula.R')
 source('./src/fit_model.R')
 ```
 
@@ -37,11 +38,9 @@ show_base_stats(train_base)
 ```{r}
   categorical_vars_names <- c('city', 
                               'gender', 
-                              'gender', 
                               'relevent_experience', 
                               'enrolled_university',
                               'education_level',
-                              'major_discipline',
                               'major_discipline',
                               'experience',
                               'company_size',
@@ -58,9 +57,15 @@ show_base_stats(train_transformed)
 ```
 # Add dummy vars
 ```{r}
-
+model_vars <- c('gender', 
+                'relevent_experience', 
+                'education_level',
+                'major_discipline',
+                'experience',
+                'company_type',
+                'last_new_job')
 # Dropp city !!!!
-dummy_model_formula <- as.formula('target ~ .')
+dummy_model_formula <- create_model_formula('target', model_vars)
 dummy_model <- dummyVars(dummy_model_formula, data=train)
 
 train_transformed <- train_transformed %>% add_dummy_vars(dummy_model)
@@ -81,4 +86,20 @@ train("test")
 ## Calculate AOC
 ```{r}
 #add aoc
+```
+
+# Test
+```{r}
+# # Set seed
+# set.seed(123)
+
+# # Data
+# x = rnorm(5)
+# x2 = rnorm(5)
+# y = rnorm(5)
+
+# # Model frame
+# model.frame(y ~ x * x2, data = data.frame(x = x, y = y, x2=x2))
+# model.frame(y ~ x : x2, data = data.frame(x = x, y = y, x2=x2))
+# model.frame(y ~ x + x2, data = data.frame(x = x, y = y, x2=x2))
 ```

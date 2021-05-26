@@ -24,6 +24,6 @@ fit_model <- function(model_name) {
   } else if (model_name == 'random-forest') {
     return(train_random_forest())
   } else {
-    stop(cat("Error: Unsupported model type! Provided model name: ", model_name, ". Supported models: svm, xgboost, logistic-regression, random-forest."))
+    stop(cat(paste0("Error: Unsupported model type! Provided model name: ", model_name, ". Supported models: svm, xgboost, logistic-regression, random-forest.")))
   }
 }
