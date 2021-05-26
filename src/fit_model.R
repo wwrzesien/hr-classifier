@@ -1,5 +1,9 @@
-train_svm <- function() {
-   print("Training svm")
+train_svm <- function(formula, df, kernel='radial') {
+   return(svm(formula=formula, 
+              data=df,
+              type='C-classification',
+              kernel==kernel,
+              probability=TRUE))
 }
 
 train_logistic_regression <- function() {
