@@ -19,3 +19,9 @@ library(skimr)
 library(pROC)
 library(ROCR)
 library(xgboost)
+library(cvms)       # custom cross-val  
+library(groupdata2) # fold()
+
+# Enable parallelization
+library(doParallel)
+registerDoParallel(8) # 8 cores
