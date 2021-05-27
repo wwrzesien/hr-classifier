@@ -22,7 +22,11 @@ library(ROCR)
 library(xgboost)
 library(cvms)       # custom cross-val  
 library(groupdata2) # fold()
+library(knitr)      # kable() : formats the output as a table
 
 # Enable parallelization
 library(doParallel)
-registerDoParallel(parallel:::detectCores() / 2)
+registerDoParallel(JOB_CORES)
+
+# Set seed
+set.seed(1)

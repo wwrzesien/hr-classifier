@@ -19,7 +19,7 @@ source('./src/create_model_formula.R')
 source('./src/divide_into_folds.R')
 source('./src/model_fit.R')
 source('./src/model_predict.R')
-source('./src/model_evaluate.R')
+source('./src/cross_validate.R')
 ```
 
 
@@ -29,6 +29,8 @@ data <- load_data()
 
 train_base <- data$train
 test_base <- data$test
+
+# train_base %>% head(5) %>% knitr::kable()
 # test <- data$test
 ```
 
@@ -52,8 +54,8 @@ show_base_stats(train_base)
                               'company_type',
                               'last_new_job')
 
-train_transformed <- train_base %>% transform_types(categorical_vars_names) %>% remove_missing_vals %>% dplyr::slice(1:1000)
-test_transformed <- test_base %>% transform_types(categorical_vars_names) %>% remove_missing_vals %>% dplyr::slice(1:1000)
+train_transformed <- train_base %>% transform_types(categorical_vars_names) %>% remove_missing_vals
+test_transformed <- test_base %>% transform_types(categorical_vars_names) %>% remove_missing_vals
 
 # Remove useless columns
 train_transformed <- train_transformed %>% dplyr::select(!c("enrollee_id", "city", "company_size"))
@@ -85,44 +87,65 @@ print(train_dummy)
 # Create folds for cross validation
 ```{r}
 # Skip dummy vars for now
-train_folded <- train_transformed %>% divide_into_folds
-print(train_dummy)
+train_folded <- train_dummy %>% divide_into_folds
+print(train_folded)
 ``` 
 
-# Train model
+# Train model and predict
 ```{r}
 independent_var_vec <- names(train_transformed)
 # Remove 'target' from vector
 independent_var_vec <- independent_var_vec[! independent_var_vec %in% c('target')]
 
 model_formula <- create_model_formula('target', independent_var_vec)
-model_svm <- model_fit("svm", train_transformed, model_formula)
+
+cv_result <- cross_validate_fn(
+  data = train_folded,
+  formulas = c(model_formula),
+  model_fn = svm_model_fn,
+  predict_fn = model_predict,
+  hyperparameters = list(
+    "kernel" = c("linear", "radial"),
+    "cost" = c(1, 5, 10)
+  ),
+  fold_cols = c(".folds"),
+  type = "binomial",
+  parallel = TRUE,
+  verbose = TRUE
+)
+
+cv_result
+
 ```
 
-# Test model
-## Predict
+# Results
+## Balanced Accuracy, F1, MCC, Model ID, AUC
 ```{r}
-predictions <- model_predict(test_transformed, model_svm, model_formula, list(), train_transformed)
-print(predictions)
+cv_result %>% 
+  dplyr::mutate(`Model ID` = 1:nrow(cv_result)) %>% 
+  dplyr::arrange(dplyr::desc(`Balanced Accuracy`)) %>% 
+  select_definitions(additional_includes = c("Balanced Accuracy", "F1", "MCC", "Model ID", "AUC")) %>%
+  dplyr::select(-c('Fixed', 'Dependent')) %>% 
+  kable(digits = 5)
 ```
 
-## eVALUATE
+## Best result
 ```{r}
+best_result <- cv_result %>% 
+  dplyr::mutate(`Model ID` = 1:nrow(cv_result)) %>% 
+  dplyr::arrange(dplyr::desc(`Balanced Accuracy`)) %>% 
+  head(1)
 
+best_result
 ```
 
-# Test
+## Confusion matrix
 ```{r}
-# # Set seed
-# set.seed(123)
+plot_confusion_matrix(cv_result$`Confusion Matrix`[[1]], add_sums = TRUE)
+```
 
-# # Data
-# x = rnorm(5)
-# x2 = rnorm(5)
-# y = rnorm(5)
 
-# # Model frame
-# model.frame(y ~ x * x2, data = data.frame(x = x, y = y, x2=x2))
-# model.frame(y ~ x : x2, data = data.frame(x = x, y = y, x2=x2))
-# model.frame(y ~ x + x2, data = data.frame(x = x, y = y, x2=x2))
+## ROC
+```{r}
+plot(best_result$ROC[[1]]$.folds)
 ```
