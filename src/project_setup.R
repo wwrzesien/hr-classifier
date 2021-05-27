@@ -4,7 +4,8 @@ knitr::opts_chunk$set(echo = TRUE)
 if (!requireNamespace("remotes"))
   install.packages("remotes")
 
-remotes::install_github("rstudio/renv")
+if (!("renv" %in% rownames(installed.packages())))
+  remotes::install_github("rstudio/renv")
 
 renv::restore()
 
@@ -24,4 +25,4 @@ library(groupdata2) # fold()
 
 # Enable parallelization
 library(doParallel)
-registerDoParallel(8) # 8 cores
+registerDoParallel(parallel:::detectCores() / 2)

@@ -18,6 +18,8 @@ source('./src/add_dummy_vars.R')
 source('./src/create_model_formula.R')
 source('./src/divide_into_folds.R')
 source('./src/model_fit.R')
+source('./src/model_predict.R')
+source('./src/model_evaluate.R')
 ```
 
 
@@ -26,12 +28,14 @@ source('./src/model_fit.R')
 data <- load_data()
 
 train_base <- data$train
+test_base <- data$test
 # test <- data$test
 ```
 
 # Print base stats
 ```{r}
 print(train_base)
+print(test_base)
 show_base_stats(train_base)
 ```
 
@@ -48,45 +52,63 @@ show_base_stats(train_base)
                               'company_type',
                               'last_new_job')
 
-train_transformed <- train_base %>% transform_types(categorical_vars_names) %>% remove_missing_vals %>% slice(1:1000)
+train_transformed <- train_base %>% transform_types(categorical_vars_names) %>% remove_missing_vals %>% dplyr::slice(1:1000)
+test_transformed <- test_base %>% transform_types(categorical_vars_names) %>% remove_missing_vals %>% dplyr::slice(1:1000)
 
 # Remove useless columns
-train_transformed <- train_transformed %>% select(!c("enrollee_id", "city", "company_size")) %>% divide_into_folds
+train_transformed <- train_transformed %>% dplyr::select(!c("enrollee_id", "city", "company_size"))
+test_transformed <- test_transformed %>% dplyr::select(!c("enrollee_id", "city", "company_size"))
 
+summary(train_transformed)
+skim(train_transformed)
 print(train_transformed)
-show_base_stats(train_transformed)
 ```
 # Add dummy vars
 ```{r}
-model_vars <- c('gender', 
-                'relevent_experience', 
-                'education_level',
-                'major_discipline',
-                'experience',
-                'company_type',
-                'last_new_job')
-# Dropp city !!!!
-dummy_model_formula <- create_model_formula('target', model_vars)
-dummy_model <- dummyVars(dummy_model_formula, data=train)
+# model_vars <- c('gender', 
+#                 'relevent_experience', 
+#                 'education_level',
+#                 'major_discipline',
+#                 'experience',
+#                 'company_type',
+#                 'last_new_job')
+# # Dropp city !!!!
+# model_formula <- create_model_formula('target', model_vars)
+# model_formula < as.formula('~ .')
+dummy_model <- dummyVars('~ .', data=train_transformed, fullRank=TRUE)
 
-train_transformed <- train_transformed %>% add_dummy_vars(dummy_model)
-print(train)
+train_dummy <- train_transformed %>% add_dummy_vars(dummy_model)
+test_dummy <- test_transformed %>% add_dummy_vars(dummy_model)
+print(train_dummy)
 ```
+
+# Create folds for cross validation
+```{r}
+# Skip dummy vars for now
+train_folded <- train_transformed %>% divide_into_folds
+print(train_dummy)
+``` 
 
 # Train model
 ```{r}
-train("test")
+independent_var_vec <- names(train_transformed)
+# Remove 'target' from vector
+independent_var_vec <- independent_var_vec[! independent_var_vec %in% c('target')]
+
+model_formula <- create_model_formula('target', independent_var_vec)
+model_svm <- model_fit("svm", train_transformed, model_formula)
 ```
 
 # Test model
 ## Predict
 ```{r}
-# add prediction funciton 
+predictions <- model_predict(test_transformed, model_svm, model_formula, list(), train_transformed)
+print(predictions)
 ```
 
-## Calculate AOC
+## eVALUATE
 ```{r}
-#add aoc
+
 ```
 
 # Test
