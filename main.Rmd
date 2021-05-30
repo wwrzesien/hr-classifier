@@ -6,6 +6,7 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
+JOB_CORES = parallel::detectCores()
 source('./src/project_setup.R')
 ```
 
@@ -123,7 +124,7 @@ cv_result
 ```{r}
 cv_result %>% 
   dplyr::mutate(`Model ID` = 1:nrow(cv_result)) %>% 
-  dplyr::arrange(dplyr::desc(`Balanced Accuracy`)) %>% 
+  dplyr::arrange(dplyr::desc(AUC)) %>% 
   select_definitions(additional_includes = c("Balanced Accuracy", "F1", "MCC", "Model ID", "AUC")) %>%
   dplyr::select(-c('Fixed', 'Dependent')) %>% 
   kable(digits = 5)
@@ -132,8 +133,6 @@ cv_result %>%
 ## Best result
 ```{r}
 best_result <- cv_result %>% 
-  dplyr::mutate(`Model ID` = 1:nrow(cv_result)) %>% 
-  dplyr::arrange(dplyr::desc(`Balanced Accuracy`)) %>% 
   head(1)
 
 best_result
