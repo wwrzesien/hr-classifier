@@ -6,7 +6,7 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
-JOB_CORES = parallel::detectCores()
+JOB_CORES = parallel::detectCores() / 2
 source('./src/project_setup.R')
 ```
 
@@ -20,7 +20,9 @@ source('./src/create_model_formula.R')
 source('./src/divide_into_folds.R')
 source('./src/model_fit.R')
 source('./src/model_predict.R')
+source('./src/model_evaluate.R')
 source('./src/cross_validate.R')
+source('./src/preprocess.R')
 ```
 
 
@@ -88,7 +90,8 @@ print(train_dummy)
 # Create folds for cross validation
 ```{r}
 # Skip dummy vars for now
-train_folded <- train_dummy %>% divide_into_folds
+# train_folded <- train_dummy %>% divide_into_folds
+train_folded <- train_transformed %>% divide_into_folds
 print(train_folded)
 ``` 
 
@@ -105,6 +108,7 @@ cv_result <- cross_validate_fn(
   formulas = c(model_formula),
   model_fn = svm_model_fn,
   predict_fn = model_predict,
+  preprocess_fn = preprocess_fn,
   hyperparameters = list(
     "kernel" = c("linear", "radial"),
     "cost" = c(1, 5, 10)
@@ -147,4 +151,214 @@ plot_confusion_matrix(cv_result$`Confusion Matrix`[[1]], add_sums = TRUE)
 ## ROC
 ```{r}
 plot(best_result$ROC[[1]]$.folds)
+```
+
+## Train the best model on the whole training dataset
+```{r}
+best_model <- svm_model_fn(
+  train_data = train_transformed,
+  formula = target ~ city_development_index + gender + relevent_experience + enrolled_university + education_level + major_discipline + experience + company_type + last_new_job + training_hours,
+  hyperparameters = best_result$HParams[[1]]
+)
+```
+
+## Predict on test dataset
+```{r}
+predict <- model_predict(
+  test_data = test_transformed[-11], 
+  model = svm_classifier
+)
+
+test_transformed[["predicted_class"]] <- predict
+
+eval <- model_evaluate(
+  test_set = test_transformed, 
+  target_col = "target", 
+  prediction_cols = "predicted_class"
+)
+```
+
+## Plot confusion matrix
+```{r}
+plot_confusion_matrix(eval, add_sums = TRUE)
+```
+
+## GRADIENT BOOSTING
+```{r}
+dummy_model <- dummyVars('~ .', data=train_transformed, fullRank=TRUE)
+
+train_dummy <- train_transformed %>% add_dummy_vars(dummy_model)
+test_dummy <- test_transformed %>% add_dummy_vars(dummy_model)
+
+# sparse_matrix <- sparse.model.matrix(target ~ ., data = train_dummy)[,-48]
+# head(sparse_matrix)
+# 
+# output_vector <- train_dummy$target
+# 
+# m <- xgboost::xgboost(
+#     data = sparse_matrix,
+#     label = output_vector,
+#     nround = 2,
+#     nthread = 2,
+#     max.depth = 2,
+#     eta = 1,
+#     objective = "binary:logistic"
+#   )
+
+xgb_model_fn <- function(train_data, formula, hyperparameters){
+  sparse_matrix <- sparse.model.matrix(formula, data = train_data)[,-48]
+  output_vector <- train_data$target
+
+  head(sparse_matrix)
+  head(output_vector)
+
+  xgboost::xgboost(
+    data = sparse_matrix,
+    label = output_vector,
+    nround = hyperparameters[["nround"]],
+    objective = hyperparameters[["objective"]]
+  )
+}
+
+xgb_predict_fn <- function(test_data, model, formula, hyperparameters, train_data){
+  stats::predict(
+    object = model,
+    newdata = test_data)
+}
+
+train_folded <- train_dummy %>% divide_into_folds
+
+xgb_result <- cross_validate_fn(
+  data = train_folded,
+  formulas = c("target ~ ."),
+  model_fn = xgb_model_fn,
+  predict_fn = xgb_predict_fn,
+  hyperparameters = list(
+    "nround" = c("binary:logistic"),
+    "objective" = c(2)
+  ),
+  fold_cols = c(".folds"),
+  type = "binomial",
+  parallel = TRUE,
+  verbose = TRUE
+)
+
+xgb_result
+# m
+
+```
+
+## LOGISTIC REGRESSION
+```{r}
+# Temporary, later move to separate scripts 
+
+lg_model_fn <- function(train_data, formula, hyperparameters){
+  stats::glm(
+    formula = formula,
+    data = train_data,
+    family = hyperparameters[["family"]]
+  )
+}
+
+lg_predict_fn <- function(test_data, model, formula, hyperparameters, train_data){
+  stats::predict(
+    object = model,
+    newdata = test_data,
+    type = "response")
+}
+
+train_folded <- train_dummy %>% divide_into_folds
+
+lg_result <- cross_validate_fn(
+  data = train_folded,
+  formulas = c("target ~ ."),
+  model_fn = lg_model_fn,
+  predict_fn = lg_predict_fn,
+  hyperparameters = list(
+    "family" = c("binomial")
+  ),
+  fold_cols = c(".folds"),
+  type = "binomial",
+  parallel = TRUE,
+  verbose = TRUE
+)
+lg_result
+
+best_result <- lg_result %>% 
+  head(1)
+
+lg_result %>% 
+  dplyr::mutate(`Model ID` = 1:nrow(lg_result)) %>% 
+  dplyr::arrange(dplyr::desc(AUC)) %>% 
+  select_definitions(additional_includes = c("Balanced Accuracy", "F1", "MCC", "Model ID", "AUC")) %>%
+  dplyr::select(-c('Fixed', 'Dependent')) %>% 
+  kable(digits = 5)
+
+plot_confusion_matrix(lg_result$`Confusion Matrix`[[1]], add_sums = TRUE)
+
+plot(best_result$ROC[[1]]$.folds)
+```
+
+## RANDOM FOREST
+```{r}
+# Temporary, later move to separate scripts 
+
+independent_var_vec <- names(train_transformed)
+# Remove 'target' from vector
+independent_var_vec <- independent_var_vec[! independent_var_vec %in% c('target')]
+
+model_formula <- create_model_formula('target', independent_var_vec)
+
+tree_model_fn <- function(train_data, formula, hyperparameters){
+  randomForest(
+    formula = formula,
+    data = train_data,
+    ntree = hyperparameters[["ntree"]]
+  )
+}
+
+tree_predict_fn <- function(test_data, model, formula, hyperparameters, train_data){
+  stats::predict(
+    object = model,
+    newdata = test_data,
+    type = "response")
+}
+
+train_folded <- train_transformed %>% divide_into_folds
+
+tree_result <- cross_validate_fn(
+  data = train_folded,
+  formulas = c("target ~ ."),
+  model_fn = tree_model_fn,
+  predict_fn = tree_predict_fn,
+  hyperparameters = list(
+    "ntree" = c(250)
+  ),
+  fold_cols = c(".folds"),
+  type = "binomial",
+  parallel = TRUE,
+  verbose = TRUE
+)
+
+tree_result
+
+best_result <- tree_result %>% 
+  head(1)
+
+tree_result %>% 
+  dplyr::mutate(`Model ID` = 1:nrow(tree_result)) %>% 
+  dplyr::arrange(dplyr::desc(AUC)) %>% 
+  select_definitions(additional_includes = c("Balanced Accuracy", "F1", "MCC", "Model ID", "AUC")) %>%
+  dplyr::select(-c('Fixed', 'Dependent')) %>% 
+  kable(digits = 5)
+
+plot_confusion_matrix(tree_result$`Confusion Matrix`[[1]], add_sums = TRUE)
+
+plot(best_result$ROC[[1]]$.folds)
+
+```
+
+
+```{r}
+
 ```
