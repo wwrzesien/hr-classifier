@@ -23,6 +23,8 @@ library(xgboost)
 library(cvms)       # custom cross-val  
 library(groupdata2) # fold()
 library(knitr)      # kable() : formats the output as a table
+library(glmnet)
+library(randomForest)
 
 # Enable parallelization
 library(doParallel)
