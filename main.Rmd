@@ -7,6 +7,7 @@ output: html_document
 
 ```{r setup, include=FALSE}
 JOB_CORES = parallel::detectCores() / 2
+
 source('./src/project_setup.R')
 ```
 
@@ -23,6 +24,7 @@ source('./src/model_predict.R')
 source('./src/model_evaluate.R')
 source('./src/cross_validate.R')
 source('./src/preprocess.R')
+source('./src/destruct_formula.R')
 ```
 
 
@@ -32,10 +34,10 @@ data <- load_data()
 
 train_base <- data$train
 test_base <- data$test
-
 # train_base %>% head(5) %>% knitr::kable()
 # test <- data$test
 ```
+
 
 # Print base stats
 ```{r}
@@ -61,8 +63,8 @@ train_transformed <- train_base %>% transform_types(categorical_vars_names) %>% 
 test_transformed <- test_base %>% transform_types(categorical_vars_names) %>% remove_missing_vals
 
 # Remove useless columns
-train_transformed <- train_transformed %>% dplyr::select(!c("enrollee_id", "city", "company_size"))
-test_transformed <- test_transformed %>% dplyr::select(!c("enrollee_id", "city", "company_size"))
+train_transformed <- train_transformed %>% dplyr::select(!c("enrollee_id", "city"))
+test_transformed <- test_transformed %>% dplyr::select(!c("enrollee_id", "city"))
 
 summary(train_transformed)
 skim(train_transformed)
@@ -91,11 +93,12 @@ print(train_dummy)
 ```{r}
 # Skip dummy vars for now
 # train_folded <- train_dummy %>% divide_into_folds
-train_folded <- train_transformed %>% divide_into_folds
+
+train_folded <- train_dummy %>% divide_into_folds
 print(train_folded)
 ``` 
 
-# Train model and predict
+# Train SVM model and predict
 ```{r}
 independent_var_vec <- names(train_transformed)
 # Remove 'target' from vector
@@ -122,9 +125,8 @@ cv_result <- cross_validate_fn(
 cv_result
 
 ```
-
-# Results
-## Balanced Accuracy, F1, MCC, Model ID, AUC
+## Results
+### Balanced Accuracy, F1, MCC, Model ID, AUC
 ```{r}
 cv_result %>% 
   dplyr::mutate(`Model ID` = 1:nrow(cv_result)) %>% 
@@ -134,39 +136,41 @@ cv_result %>%
   kable(digits = 5)
 ```
 
-## Best result
+### Best result
 ```{r}
-best_result <- cv_result %>% 
-  head(1)
+best_model_id <- 1
+best_result <- cv_result %>% dplyr::slice(best_model_id)
 
 best_result
+print(best_result$HParams[[1]])
+print(best_result$Fixed)
+print(best_result$Dependent)
 ```
 
-## Confusion matrix
+### Confusion matrix
 ```{r}
-plot_confusion_matrix(cv_result$`Confusion Matrix`[[1]], add_sums = TRUE)
+plot_confusion_matrix(cv_result$`Confusion Matrix`[[best_model_id]], add_sums = TRUE)
 ```
 
-
-## ROC
+### ROC
 ```{r}
 plot(best_result$ROC[[1]]$.folds)
 ```
 
-## Train the best model on the whole training dataset
+### Train the best model on the whole training dataset
 ```{r}
 best_model <- svm_model_fn(
   train_data = train_transformed,
-  formula = target ~ city_development_index + gender + relevent_experience + enrolled_university + education_level + major_discipline + experience + company_type + last_new_job + training_hours,
+  formula = as.formula(paste(c(best_result$Dependent, best_result$Fixed), collapse = ' ~ ')),
   hyperparameters = best_result$HParams[[1]]
 )
 ```
 
-## Predict on test dataset
+### Predict on test dataset
 ```{r}
 predict <- model_predict(
   test_data = test_transformed[-11], 
-  model = svm_classifier
+  model = best_model
 )
 
 test_transformed[["predicted_class"]] <- predict
@@ -178,74 +182,112 @@ eval <- model_evaluate(
 )
 ```
 
-## Plot confusion matrix
+### Plot confusion matrix
+```{r}
+plot_confusion_matrix(eval, add_sums = TRUE)
+```
+### ROC
 ```{r}
 plot_confusion_matrix(eval, add_sums = TRUE)
 ```
 
-## GRADIENT BOOSTING
+# Train XGBoost model and predict
 ```{r}
-dummy_model <- dummyVars('~ .', data=train_transformed, fullRank=TRUE)
+independent_var_vec <- names(train_dummy)
+# Remove 'target' from vector
+independent_var_vec <- independent_var_vec[! independent_var_vec %in% c('target')]
 
-train_dummy <- train_transformed %>% add_dummy_vars(dummy_model)
-test_dummy <- test_transformed %>% add_dummy_vars(dummy_model)
 
-# sparse_matrix <- sparse.model.matrix(target ~ ., data = train_dummy)[,-48]
-# head(sparse_matrix)
-# 
-# output_vector <- train_dummy$target
-# 
-# m <- xgboost::xgboost(
-#     data = sparse_matrix,
-#     label = output_vector,
-#     nround = 2,
-#     nthread = 2,
-#     max.depth = 2,
-#     eta = 1,
-#     objective = "binary:logistic"
-#   )
+model_formula <- create_model_formula('target', independent_var_vec)
 
-xgb_model_fn <- function(train_data, formula, hyperparameters){
-  sparse_matrix <- sparse.model.matrix(formula, data = train_data)[,-48]
-  output_vector <- train_data$target
-
-  head(sparse_matrix)
-  head(output_vector)
-
-  xgboost::xgboost(
-    data = sparse_matrix,
-    label = output_vector,
-    nround = hyperparameters[["nround"]],
-    objective = hyperparameters[["objective"]]
-  )
-}
-
-xgb_predict_fn <- function(test_data, model, formula, hyperparameters, train_data){
-  stats::predict(
-    object = model,
-    newdata = test_data)
-}
-
-train_folded <- train_dummy %>% divide_into_folds
-
-xgb_result <- cross_validate_fn(
+cv_result <- cross_validate_fn(
   data = train_folded,
-  formulas = c("target ~ ."),
-  model_fn = xgb_model_fn,
-  predict_fn = xgb_predict_fn,
+  formulas = c(model_formula),
+  model_fn = xgboost_model_fn,
+  predict_fn = xgboost_predict_fn,
   hyperparameters = list(
-    "nround" = c("binary:logistic"),
-    "objective" = c(2)
+    "nthread" = c(JOB_CORES),
+    "nround" = c(1, 4, 10, 100),
+    "max_depth" = c(1, 5, 10, 50, 100)
   ),
   fold_cols = c(".folds"),
   type = "binomial",
-  parallel = TRUE,
+  parallel = FALSE,
   verbose = TRUE
 )
 
-xgb_result
-# m
+cv_result
 
+```
+## Results
+### Balanced Accuracy, F1, MCC, Model ID, AUC
+```{r}
+cv_result %>% 
+  dplyr::mutate(`Model ID` = 1:nrow(cv_result)) %>% 
+  dplyr::arrange(dplyr::desc(AUC)) %>% 
+  select_definitions(additional_includes = c("Balanced Accuracy", "F1", "MCC", "Model ID", "AUC")) %>%
+  dplyr::select(-c('Fixed', 'Dependent')) %>% 
+  kable(digits = 5)
+```
+
+### Best result
+```{r}
+best_model_id <- 4
+best_result <- cv_result %>% dplyr::slice(best_model_id)
+
+best_result
+print(best_result$HParams[[1]])
+print(best_result$Fixed)
+print(best_result$Dependent)
+```
+
+### Confusion matrix
+```{r}
+plot_confusion_matrix(cv_result$`Confusion Matrix`[[best_model_id]], add_sums = TRUE)
+```
+
+
+### ROC
+```{r}
+plot(best_result$ROC[[1]]$.folds)
+```
+
+### Train the best model on the whole training dataset
+```{r}
+best_model_formula <- as.formula(paste(c(best_result$Dependent, best_result$Fixed), collapse = ' ~ '))
+
+best_model <- xgboost_model_fn(
+  train_data = train_dummy,
+  formula = best_model_formula,
+  hyperparameters = best_result$HParams[[1]]
+)
+```
+
+### Predict on test dataset
+```{r}
+predict <- xgboost_predict_fn(
+  formula = best_model_formula,
+  test_data = test_dummy, 
+  model = best_model
+)
+
+test_dummy[["predicted_class"]] <- predict
+
+eval <- model_evaluate(
+  test_set = test_dummy, 
+  target_col = "target", 
+  prediction_cols = "predicted_class"
+)
+eval
+```
+
+### Plot confusion matrix
+```{r}
+plot_confusion_matrix(eval, add_sums = TRUE)
+```
+### ROC
+```{r}
+plot(eval$ROC[[1]])
 ```
 
 ## LOGISTIC REGRESSION
