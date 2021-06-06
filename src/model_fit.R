@@ -24,7 +24,7 @@ xgboost_model_fn <- function(train_data, formula, hyperparameters) {
 
   hyperparameters <- cvms::update_hyperparameters(
     objective = "binary:logistic",
-    max.depth = 2,
+    max_depth = 2,
     nround = 2,
     nthread = 2,
     hyperparameters = hyperparameters
@@ -40,7 +40,7 @@ xgboost_model_fn <- function(train_data, formula, hyperparameters) {
   xgboost::xgboost(data = data,
                     label = label,
                     nround = hyperparameters[["nround"]],
-                    max.depth = hyperparameters[["max.depth"]],
+                    max.depth = hyperparameters[["max_depth"]],
                     nthread = hyperparameters[["nthread"]],
                     objective = hyperparameters[["objective"]])
 }
