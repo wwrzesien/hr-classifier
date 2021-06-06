@@ -7,13 +7,17 @@ svm_model_fn <- function(train_data, formula, hyperparameters) {
     hyperparameters = hyperparameters
   )
   
+  # ROSE balancing
+  train_data <-ROSE(formula , data = train_data)$data
+  
+  # Weight balancing
   weights = c("0"= nrow(train_folded) / (sum(train_folded$target == "0") *2),
               "1"=nrow(train_folded) / (sum(train_folded$target == "1") *2))
   
   e1071::svm(formula = formula, 
               data = train_data,
               type = 'C-classification',
-              class.weights = weights,
+              # class.weights = weights,
               kernel = hyperparameters[["kernel"]],
               cost = hyperparameters[["cost"]],
               probability = TRUE)
@@ -27,10 +31,13 @@ lg_model_fn <- function(train_data, formula, hyperparameters) {
     hyperparameters = hyperparameters
   )
   
-  model_weights <- ifelse(train_data$target == 0,
-                          nrow(train_data) / (sum(train_data$target == 0) * 2),
-                          nrow(train_data) / (sum(train_data$target == 1) * 2))
-  # train_data <-ROSE(target~. , data = train_data)$data
+  # ROSE balancing
+  train_data <-ROSE(formula , data = train_data)$data
+  
+  # Weight balancing. Error: variable lengths differ (found for '(weights)')
+  model_weights <- ifelse(train_data$target == "0",
+                          nrow(train_data) / (sum(train_data$target == "0") * 2),
+                          nrow(train_data) / (sum(train_data$target == "1") * 2))
 
   stats::glm(
     formula = formula,
@@ -50,6 +57,9 @@ xgboost_model_fn <- function(train_data, formula, hyperparameters) {
     nthread = 2,
     hyperparameters = hyperparameters
   )
+  
+  # ROSE balancing
+  train_data <-ROSE(formula , data = train_data)$data
 
   # Extract data defined by simple formula (only wiht "+" operators)
   destructed_formula <- destruct_formula(formula)
@@ -60,11 +70,11 @@ xgboost_model_fn <- function(train_data, formula, hyperparameters) {
 
   xgboost::xgboost(data = data,
                     label = label,
+                    # scale_pos_weight = sum(train_data$target == 1)/sum(train_data$target == 0)
                     nround = hyperparameters[["nround"]],
                     max.depth = hyperparameters[["max_depth"]],
                     nthread = hyperparameters[["nthread"]],
-                    objective = hyperparameters[["objective"]],
-                    scale_pos_weight = sum(train_data$target == 1)/sum(train_data$target == 0))
+                    objective = hyperparameters[["objective"]])
 }
 
 forest_model_fn <- function(train_data, formula, hyperparameters) {
@@ -75,13 +85,17 @@ forest_model_fn <- function(train_data, formula, hyperparameters) {
     hyperparameters = hyperparameters
   )
   
+  # ROSE balancing
+  train_data <-ROSE(formula , data = train_data)$data
+  
+  # Weight balancing
   weights = c("0"= nrow(train_folded) / (sum(train_folded$target == "0") *2),
               "1"= nrow(train_folded) / (sum(train_folded$target == "1") *2))
   
   randomForest(
     formula = formula,
     data = train_data,
-    classwt = weights,
+    # classwt = weights,
     ntree = hyperparameters[["ntree"]]
   )
 }

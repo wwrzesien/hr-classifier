@@ -25,6 +25,7 @@ library(groupdata2) # fold()
 library(knitr)      # kable() : formats the output as a table
 library(glmnet)
 library(randomForest)
+library(ROSE)
 
 # Enable parallelization
 library(doParallel)
@@ -32,3 +33,4 @@ registerDoParallel(JOB_CORES)
 
 # Set seed
 set.seed(1)
+
