@@ -291,70 +291,6 @@ plot_confusion_matrix(eval, add_sums = TRUE)
 plot(eval$ROC[[1]])
 ```
 
-## RANDOM FOREST
-```{r}
-# Temporary, later move to separate scripts 
-
-independent_var_vec <- names(train_transformed)
-# Remove 'target' from vector
-independent_var_vec <- independent_var_vec[! independent_var_vec %in% c('target')]
-
-model_formula <- create_model_formula('target', independent_var_vec)
-
-tree_model_fn <- function(train_data, formula, hyperparameters){
-  randomForest(
-    formula = formula,
-    data = train_data,
-    ntree = hyperparameters[["ntree"]]
-  )
-}
-
-tree_predict_fn <- function(test_data, model, formula, hyperparameters, train_data){
-  stats::predict(
-    object = model,
-    newdata = test_data,
-    type = "response")
-}
-
-train_folded <- train_transformed %>% divide_into_folds
-
-tree_result <- cross_validate_fn(
-  data = train_folded,
-  formulas = c("target ~ ."),
-  model_fn = tree_model_fn,
-  predict_fn = tree_predict_fn,
-  hyperparameters = list(
-    "ntree" = 100
-  ),
-  fold_cols = c(".folds"),
-  type = "binomial",
-  parallel = TRUE,
-  verbose = TRUE
-)
-
-tree_result
-
-best_result <- tree_result %>% 
-  head(1)
-
-tree_result %>% 
-  dplyr::mutate(`Model ID` = 1:nrow(tree_result)) %>% 
-  dplyr::arrange(dplyr::desc(AUC)) %>% 
-  select_definitions(additional_includes = c("Balanced Accuracy", "F1", "MCC", "Model ID", "AUC")) %>%
-  dplyr::select(-c('Fixed', 'Dependent')) %>% 
-  kable(digits = 5)
-
-plot_confusion_matrix(tree_result$`Confusion Matrix`[[1]], add_sums = TRUE)
-
-plot(best_result$ROC[[1]]$.folds)
-
-```
-
-
-```{r}
-
-```
-
 # Train logistic regression model and predict
 ```{r}
 independent_var_vec <- names(train_dummy)
@@ -367,7 +303,7 @@ train_folded <- train_dummy %>% divide_into_folds
 
 lg_result <- cross_validate_fn(
   data = train_folded,
-  formulas = c("target ~ ."),
+  formulas = model_formula,
   model_fn = lg_model_fn,
   predict_fn = lg_predict_fn,
   hyperparameters = list(
@@ -428,6 +364,106 @@ best_model <- lg_model_fn(
 predict <- lg_predict_fn(
   formula = best_model_formula,
   test_data = test_dummy, 
+  model = best_model
+)
+
+test_dummy[["predicted_class"]] <- predict
+
+eval <- model_evaluate(
+  test_set = test_dummy, 
+  target_col = "target", 
+  prediction_cols = "predicted_class"
+)
+eval
+```
+
+### Plot confusion matrix
+```{r}
+plot_confusion_matrix(eval, add_sums = TRUE)
+```
+### ROC
+```{r}
+plot(eval$ROC[[1]])
+```
+
+
+
+# Train Random Forest model and predict
+```{r}
+independent_var_vec <- names(train_transformed)
+# Remove 'target' from vector
+independent_var_vec <- independent_var_vec[! independent_var_vec %in% c('target')]
+
+model_formula <- create_model_formula('target', independent_var_vec)
+
+train_folded <- train_transformed %>% divide_into_folds
+
+# parameters to test: ntree: (100, 250, 500, 1000)
+
+forest_result <- cross_validate_fn(
+  data = train_folded,
+  formulas = model_formula,
+  model_fn = forest_model_fn,
+  predict_fn = forest_predict_fn,
+  hyperparameters = list(
+    "ntree" = 100
+  ),
+  fold_cols = c(".folds"),
+  type = "binomial",
+  parallel = TRUE,
+  verbose = TRUE
+)
+
+forest_result
+
+```
+## Results
+### Balanced Accuracy, F1, MCC, Model ID, AUC
+```{r}
+forest_result %>% 
+  dplyr::mutate(`Model ID` = 1:nrow(lg_result)) %>% 
+  dplyr::arrange(dplyr::desc(AUC)) %>% 
+  select_definitions(additional_includes = c("Balanced Accuracy", "F1", "MCC", "Model ID", "AUC")) %>%
+  dplyr::select(-c('Fixed', 'Dependent')) %>% 
+  kable(digits = 5)
+```
+### Best result
+```{r}
+best_model_id <- 1
+best_result <- forest_result %>% dplyr::slice(best_model_id)
+
+print(best_result)
+print(best_result$HParams[[1]])
+print(best_result$Fixed)
+print(best_result$Dependent)
+```
+
+### Confusion matrix
+```{r}
+plot_confusion_matrix(forest_result$`Confusion Matrix`[[best_model_id]], add_sums = TRUE)
+```
+
+### ROC
+```{r}
+plot(best_result$ROC[[1]]$.folds)
+```
+
+### Train the best model on the whole training dataset
+```{r}
+best_model_formula <- as.formula(paste(c(best_result$Dependent, best_result$Fixed), collapse = ' ~ '))
+
+best_model <- forest_model_fn(
+  train_data = train_transformed,
+  formula = best_model_formula,
+  hyperparameters = best_result$HParams[[1]]
+)
+```
+
+### Predict on test dataset
+```{r}
+predict <- forest_predict_fn(
+  formula = best_model_formula,
+  test_data = test_transformed, 
   model = best_model
 )
 

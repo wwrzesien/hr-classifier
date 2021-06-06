@@ -25,3 +25,10 @@ xgboost_predict_fn <- function(test_data, model, formula, hyperparameters, train
           probability = TRUE)
 }
 
+forest_predict_fn <- function(test_data, model, formula, hyperparameters, train_data){
+  stats::predict(
+    object = model,
+    newdata = test_data,
+    type = "response")
+}
+

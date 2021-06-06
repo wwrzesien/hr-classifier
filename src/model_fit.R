@@ -56,8 +56,19 @@ xgboost_model_fn <- function(train_data, formula, hyperparameters) {
                     objective = hyperparameters[["objective"]])
 }
 
-random_forest_model_fn <- function(train_data, formula, hyperparameters) {
+forest_model_fn <- function(train_data, formula, hyperparameters) {
    print("Training random forest")
+  
+  hyperparameters <- cvms::update_hyperparameters(
+    ntree = 100,
+    hyperparameters = hyperparameters
+  )
+  
+  randomForest(
+    formula = formula,
+    data = train_data,
+    ntree = hyperparameters[["ntree"]]
+  )
 }
 
 # model_fit <- function(model_name, train_data, formula, hyperparameters = list()) {
