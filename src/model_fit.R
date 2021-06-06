@@ -7,9 +7,13 @@ svm_model_fn <- function(train_data, formula, hyperparameters) {
     hyperparameters = hyperparameters
   )
   
+  weights = c("0"= nrow(train_folded) / (sum(train_folded$target == "0") *2),
+              "1"=nrow(train_folded) / (sum(train_folded$target == "1") *2))
+  
   e1071::svm(formula = formula, 
               data = train_data,
               type = 'C-classification',
+              class.weights = weights,
               kernel = hyperparameters[["kernel"]],
               cost = hyperparameters[["cost"]],
               probability = TRUE)
@@ -23,9 +27,15 @@ lg_model_fn <- function(train_data, formula, hyperparameters) {
     hyperparameters = hyperparameters
   )
   
+  model_weights <- ifelse(train_data$target == 0,
+                          nrow(train_data) / (sum(train_data$target == 0) * 2),
+                          nrow(train_data) / (sum(train_data$target == 1) * 2))
+  # train_data <-ROSE(target~. , data = train_data)$data
+
   stats::glm(
     formula = formula,
     data = train_data,
+    # weights = model_weights,
     family = hyperparameters[["family"]]
   )
 }
@@ -53,7 +63,8 @@ xgboost_model_fn <- function(train_data, formula, hyperparameters) {
                     nround = hyperparameters[["nround"]],
                     max.depth = hyperparameters[["max_depth"]],
                     nthread = hyperparameters[["nthread"]],
-                    objective = hyperparameters[["objective"]])
+                    objective = hyperparameters[["objective"]],
+                    scale_pos_weight = sum(train_data$target == 1)/sum(train_data$target == 0))
 }
 
 forest_model_fn <- function(train_data, formula, hyperparameters) {
@@ -64,9 +75,13 @@ forest_model_fn <- function(train_data, formula, hyperparameters) {
     hyperparameters = hyperparameters
   )
   
+  weights = c("0"= nrow(train_folded) / (sum(train_folded$target == "0") *2),
+              "1"= nrow(train_folded) / (sum(train_folded$target == "1") *2))
+  
   randomForest(
     formula = formula,
     data = train_data,
+    classwt = weights,
     ntree = hyperparameters[["ntree"]]
   )
 }

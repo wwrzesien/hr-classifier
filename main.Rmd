@@ -98,6 +98,16 @@ train_folded <- train_dummy %>% divide_into_folds
 print(train_folded)
 ``` 
 
+```{r}
+library(ROSE)
+data_rose <-ROSE(target~. , data = train_transformed)$data
+
+train_transformed
+data_rose
+table(train_transformed$target)
+table(data_rose$target)
+```
+
 # Train SVM model and predict
 ```{r}
 independent_var_vec <- names(train_transformed)
@@ -108,6 +118,9 @@ model_formula <- create_model_formula('target', independent_var_vec)
 
 train_folded <- train_transformed %>% divide_into_folds
 
+# weight_0 = nrow(train_folded) / (sum(train_folded$target == "0") *2)
+# weight_1 = nrow(train_folded) / (sum(train_folded$target == "1") *2)
+
 cv_result <- cross_validate_fn(
   data = train_folded,
   formulas = c(model_formula),
@@ -115,8 +128,10 @@ cv_result <- cross_validate_fn(
   predict_fn = model_predict,
   preprocess_fn = preprocess_fn,
   hyperparameters = list(
-    "kernel" = c("linear", "radial"),
-    "cost" = c(1, 5, 10)
+    # "weight_0" = weight_0,
+    # "weight_1" = weight_1,
+    "kernel" = c("linear"),#, "radial"),
+    "cost" = c(10)#, 5, 10)
   ),
   fold_cols = c(".folds"),
   type = "binomial",
@@ -171,7 +186,7 @@ best_model <- svm_model_fn(
 ### Predict on test dataset
 ```{r}
 predict <- model_predict(
-  test_data = test_transformed[-11], 
+  test_data = test_transformed[-12], 
   model = best_model
 )
 
@@ -190,7 +205,7 @@ plot_confusion_matrix(eval, add_sums = TRUE)
 ```
 ### ROC
 ```{r}
-plot_confusion_matrix(eval, add_sums = TRUE)
+plot(best_result$ROC[[1]]$.folds)
 ```
 
 # Train XGBoost model and predict
@@ -199,8 +214,9 @@ independent_var_vec <- names(train_dummy)
 # Remove 'target' from vector
 independent_var_vec <- independent_var_vec[! independent_var_vec %in% c('target')]
 
-
 model_formula <- create_model_formula('target', independent_var_vec)
+
+train_folded <- train_dummy %>% divide_into_folds
 
 cv_result <- cross_validate_fn(
   data = train_folded,
@@ -209,8 +225,8 @@ cv_result <- cross_validate_fn(
   predict_fn = xgboost_predict_fn,
   hyperparameters = list(
     "nthread" = c(JOB_CORES),
-    "nround" = c(1, 4, 10, 100),
-    "max_depth" = c(1, 5, 10, 50, 100)
+    "nround" = c(1), #, 4, 10, 100),
+    "max_depth" = c(1) # 5, 10, 50, 100)
   ),
   fold_cols = c(".folds"),
   type = "binomial",
@@ -234,7 +250,7 @@ cv_result %>%
 
 ### Best result
 ```{r}
-best_model_id <- 4
+best_model_id <- 1
 best_result <- cv_result %>% dplyr::slice(best_model_id)
 
 best_result
@@ -292,6 +308,7 @@ plot(eval$ROC[[1]])
 ```
 
 # Train logistic regression model and predict
+
 ```{r}
 independent_var_vec <- names(train_dummy)
 # Remove 'target' from vector
@@ -368,6 +385,7 @@ predict <- lg_predict_fn(
 )
 
 test_dummy[["predicted_class"]] <- predict
+predict
 
 eval <- model_evaluate(
   test_set = test_dummy, 
@@ -406,7 +424,7 @@ forest_result <- cross_validate_fn(
   model_fn = forest_model_fn,
   predict_fn = forest_predict_fn,
   hyperparameters = list(
-    "ntree" = 100
+    "ntree" = 10
   ),
   fold_cols = c(".folds"),
   type = "binomial",
@@ -468,9 +486,10 @@ predict <- forest_predict_fn(
 )
 
 test_dummy[["predicted_class"]] <- predict
+predict
 
 eval <- model_evaluate(
-  test_set = test_dummy, 
+  test_set = test_transformed, 
   target_col = "target", 
   prediction_cols = "predicted_class"
 )
