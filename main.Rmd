@@ -6,7 +6,7 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
-JOB_CORES = parallel::detectCores() / 2
+JOB_CORES = parallel::detectCores()
 
 source('./src/project_setup.R')
 ```
@@ -25,6 +25,7 @@ source('./src/model_evaluate.R')
 source('./src/cross_validate.R')
 source('./src/preprocess.R')
 source('./src/destruct_formula.R')
+source('./src/normalize_data.R')
 ```
 
 
@@ -205,6 +206,7 @@ cv_result <- cross_validate_fn(
   formulas = c(model_formula),
   model_fn = xgboost_model_fn,
   predict_fn = xgboost_predict_fn,
+  preprocess_fn = preprocess_fn,
   hyperparameters = list(
     "nthread" = c(JOB_CORES),
     "nround" = c(1, 4, 10, 100),
@@ -239,6 +241,7 @@ best_result
 print(best_result$HParams[[1]])
 print(best_result$Fixed)
 print(best_result$Dependent)
+print(best_result$Preprocess)
 ```
 
 ### Confusion matrix
