@@ -6,7 +6,8 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
-JOB_CORES = parallel::detectCores()
+JOB_CORES = parallel::detectCores() / 2
+
 source('./src/project_setup.R')
 ```
 
@@ -92,6 +93,7 @@ print(train_dummy)
 ```{r}
 # Skip dummy vars for now
 # train_folded <- train_dummy %>% divide_into_folds
+
 train_folded <- train_dummy %>% divide_into_folds
 print(train_folded)
 ``` 
@@ -109,6 +111,7 @@ cv_result <- cross_validate_fn(
   formulas = c(model_formula),
   model_fn = svm_model_fn,
   predict_fn = model_predict,
+  preprocess_fn = preprocess_fn,
   hyperparameters = list(
     "kernel" = c("linear", "radial"),
     "cost" = c(1, 5, 10)
