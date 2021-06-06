@@ -6,7 +6,7 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
-JOB_CORES = parallel::detectCores() / 2
+JOB_CORES = parallel::detectCores()
 
 source('./src/project_setup.R')
 ```
@@ -106,6 +106,8 @@ independent_var_vec <- independent_var_vec[! independent_var_vec %in% c('target'
 
 model_formula <- create_model_formula('target', independent_var_vec)
 
+train_folded <- train_transformed %>% divide_into_folds
+
 cv_result <- cross_validate_fn(
   data = train_folded,
   formulas = c(model_formula),
@@ -114,7 +116,7 @@ cv_result <- cross_validate_fn(
   preprocess_fn = preprocess_fn,
   hyperparameters = list(
     "kernel" = c("linear", "radial"),
-    "cost" = c(1, 5, 10)
+    "cost" = c(10, 5, 10)
   ),
   fold_cols = c(".folds"),
   type = "binomial",
@@ -169,7 +171,7 @@ best_model <- svm_model_fn(
 ### Predict on test dataset
 ```{r}
 predict <- model_predict(
-  test_data = test_transformed[-11], 
+  test_data = test_transformed[-12], 
   model = best_model
 )
 
@@ -180,6 +182,7 @@ eval <- model_evaluate(
   target_col = "target", 
   prediction_cols = "predicted_class"
 )
+eval
 ```
 
 ### Plot confusion matrix
@@ -188,7 +191,7 @@ plot_confusion_matrix(eval, add_sums = TRUE)
 ```
 ### ROC
 ```{r}
-plot_confusion_matrix(eval, add_sums = TRUE)
+plot(best_result$ROC[[1]]$.folds)
 ```
 
 # Train XGBoost model and predict
@@ -197,8 +200,9 @@ independent_var_vec <- names(train_dummy)
 # Remove 'target' from vector
 independent_var_vec <- independent_var_vec[! independent_var_vec %in% c('target')]
 
-
 model_formula <- create_model_formula('target', independent_var_vec)
+
+train_folded <- train_dummy %>% divide_into_folds
 
 cv_result <- cross_validate_fn(
   data = train_folded,
@@ -232,7 +236,7 @@ cv_result %>%
 
 ### Best result
 ```{r}
-best_model_id <- 4
+best_model_id <- 1
 best_result <- cv_result %>% dplyr::slice(best_model_id)
 
 best_result
@@ -245,7 +249,6 @@ print(best_result$Dependent)
 ```{r}
 plot_confusion_matrix(cv_result$`Confusion Matrix`[[best_model_id]], add_sums = TRUE)
 ```
-
 
 ### ROC
 ```{r}
@@ -290,30 +293,19 @@ plot_confusion_matrix(eval, add_sums = TRUE)
 plot(eval$ROC[[1]])
 ```
 
-## LOGISTIC REGRESSION
+# Train logistic regression model and predict
 ```{r}
-# Temporary, later move to separate scripts 
+independent_var_vec <- names(train_dummy)
+# Remove 'target' from vector
+independent_var_vec <- independent_var_vec[! independent_var_vec %in% c('target')]
 
-lg_model_fn <- function(train_data, formula, hyperparameters){
-  stats::glm(
-    formula = formula,
-    data = train_data,
-    family = hyperparameters[["family"]]
-  )
-}
-
-lg_predict_fn <- function(test_data, model, formula, hyperparameters, train_data){
-  stats::predict(
-    object = model,
-    newdata = test_data,
-    type = "response")
-}
+model_formula <- create_model_formula('target', independent_var_vec)
 
 train_folded <- train_dummy %>% divide_into_folds
 
 lg_result <- cross_validate_fn(
   data = train_folded,
-  formulas = c("target ~ ."),
+  formulas = model_formula,
   model_fn = lg_model_fn,
   predict_fn = lg_predict_fn,
   hyperparameters = list(
@@ -324,57 +316,97 @@ lg_result <- cross_validate_fn(
   parallel = TRUE,
   verbose = TRUE
 )
+
 lg_result
-
-best_result <- lg_result %>% 
-  head(1)
-
+```
+## Results
+### Balanced Accuracy, F1, MCC, Model ID, AUC
+```{r}
 lg_result %>% 
   dplyr::mutate(`Model ID` = 1:nrow(lg_result)) %>% 
   dplyr::arrange(dplyr::desc(AUC)) %>% 
   select_definitions(additional_includes = c("Balanced Accuracy", "F1", "MCC", "Model ID", "AUC")) %>%
   dplyr::select(-c('Fixed', 'Dependent')) %>% 
   kable(digits = 5)
+```
+### Best result
+```{r}
+best_model_id <- 1
+best_result <- lg_result %>% dplyr::slice(best_model_id)
 
-plot_confusion_matrix(lg_result$`Confusion Matrix`[[1]], add_sums = TRUE)
+print(best_result)
+print(best_result$HParams[[1]])
+print(best_result$Fixed)
+print(best_result$Dependent)
+```
 
+### Confusion matrix
+```{r}
+plot_confusion_matrix(lg_result$`Confusion Matrix`[[best_model_id]], add_sums = TRUE)
+```
+
+### ROC
+```{r}
 plot(best_result$ROC[[1]]$.folds)
 ```
 
-## RANDOM FOREST
+### Train the best model on the whole training dataset
 ```{r}
-# Temporary, later move to separate scripts 
+best_model_formula <- as.formula(paste(c(best_result$Dependent, best_result$Fixed), collapse = ' ~ '))
 
+best_model <- lg_model_fn(
+  train_data = train_dummy,
+  formula = best_model_formula,
+  hyperparameters = best_result$HParams[[1]]
+)
+```
+
+### Predict on test dataset
+```{r}
+predict <- lg_predict_fn(
+  formula = best_model_formula,
+  test_data = test_dummy, 
+  model = best_model
+)
+
+test_dummy[["predicted_class"]] <- predict
+
+eval <- model_evaluate(
+  test_set = test_dummy, 
+  target_col = "target", 
+  prediction_cols = "predicted_class"
+)
+eval
+```
+
+### Plot confusion matrix
+```{r}
+plot_confusion_matrix(eval, add_sums = TRUE)
+```
+### ROC
+```{r}
+plot(eval$ROC[[1]])
+```
+
+# Train Random Forest model and predict
+```{r}
 independent_var_vec <- names(train_transformed)
 # Remove 'target' from vector
 independent_var_vec <- independent_var_vec[! independent_var_vec %in% c('target')]
 
 model_formula <- create_model_formula('target', independent_var_vec)
 
-tree_model_fn <- function(train_data, formula, hyperparameters){
-  randomForest(
-    formula = formula,
-    data = train_data,
-    ntree = hyperparameters[["ntree"]]
-  )
-}
-
-tree_predict_fn <- function(test_data, model, formula, hyperparameters, train_data){
-  stats::predict(
-    object = model,
-    newdata = test_data,
-    type = "response")
-}
-
 train_folded <- train_transformed %>% divide_into_folds
 
-tree_result <- cross_validate_fn(
+# parameters to test: ntree: (100, 250, 500, 1000)
+
+forest_result <- cross_validate_fn(
   data = train_folded,
-  formulas = c("target ~ ."),
-  model_fn = tree_model_fn,
-  predict_fn = tree_predict_fn,
+  formulas = model_formula,
+  model_fn = forest_model_fn,
+  predict_fn = forest_predict_fn,
   hyperparameters = list(
-    "ntree" = c(250)
+    "ntree" = 2
   ),
   fold_cols = c(".folds"),
   type = "binomial",
@@ -382,25 +414,75 @@ tree_result <- cross_validate_fn(
   verbose = TRUE
 )
 
-tree_result
+forest_result
 
-best_result <- tree_result %>% 
-  head(1)
-
-tree_result %>% 
-  dplyr::mutate(`Model ID` = 1:nrow(tree_result)) %>% 
+```
+## Results
+### Balanced Accuracy, F1, MCC, Model ID, AUC
+```{r}
+forest_result %>% 
+  dplyr::mutate(`Model ID` = 1:nrow(lg_result)) %>% 
   dplyr::arrange(dplyr::desc(AUC)) %>% 
   select_definitions(additional_includes = c("Balanced Accuracy", "F1", "MCC", "Model ID", "AUC")) %>%
   dplyr::select(-c('Fixed', 'Dependent')) %>% 
   kable(digits = 5)
+```
+### Best result
+```{r}
+best_model_id <- 1
+best_result <- forest_result %>% dplyr::slice(best_model_id)
 
-plot_confusion_matrix(tree_result$`Confusion Matrix`[[1]], add_sums = TRUE)
-
-plot(best_result$ROC[[1]]$.folds)
-
+print(best_result)
+print(best_result$HParams[[1]])
+print(best_result$Fixed)
+print(best_result$Dependent)
 ```
 
-
+### Confusion matrix
 ```{r}
+plot_confusion_matrix(forest_result$`Confusion Matrix`[[best_model_id]], add_sums = TRUE)
+```
 
+### ROC
+```{r}
+plot(best_result$ROC[[1]]$.folds)
+```
+
+### Train the best model on the whole training dataset
+```{r}
+best_model_formula <- as.formula(paste(c(best_result$Dependent, best_result$Fixed), collapse = ' ~ '))
+
+best_model <- forest_model_fn(
+  train_data = train_transformed,
+  formula = best_model_formula,
+  hyperparameters = best_result$HParams[[1]]
+)
+```
+
+### Predict on test dataset
+```{r}
+predict <- forest_predict_fn(
+  formula = best_model_formula,
+  test_data = test_transformed, 
+  model = best_model
+)
+
+test_dummy[["predicted_class"]] <- predict
+predict
+
+eval <- model_evaluate(
+  test_set = test_transformed, 
+  target_col = "target", 
+  prediction_cols = "predicted_class"
+)
+eval
+```
+
+### Plot confusion matrix
+```{r}
+plot_confusion_matrix(eval, add_sums = TRUE)
+```
+### ROC
+```{r}
+plot(eval$ROC[[1]])
 ```
