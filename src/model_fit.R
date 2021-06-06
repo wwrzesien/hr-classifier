@@ -15,8 +15,19 @@ svm_model_fn <- function(train_data, formula, hyperparameters) {
               probability = TRUE)
 }
 
-logistic_regression_model_fn <- function(train_data, formula, hyperparameters) {
+lg_model_fn <- function(train_data, formula, hyperparameters) {
    print("Training logisitic regression")
+  
+  hyperparameters <- cvms::update_hyperparameters(
+    family = "binomial",
+    hyperparameters = hyperparameters
+  )
+  
+  stats::glm(
+    formula = formula,
+    data = train_data,
+    family = hyperparameters[["family"]]
+  )
 }
 
 xgboost_model_fn <- function(train_data, formula, hyperparameters) {
