@@ -27,9 +27,14 @@ xgboost_model_fn <- function(train_data, formula, hyperparameters) {
     max_depth = 2,
     nround = 2,
     nthread = 2,
+    dummy_model = NULL,
     hyperparameters = hyperparameters
   )
 
+  # Check if dummy vars need to be applied 
+  if (!is.null(dummy_model)) {
+    train_data <- train_data %>% add_dummy_vars(hyperparameters[["dummy_model"]])
+  }
   # Extract data defined by simple formula (only wiht "+" operators)
   destructed_formula <- destruct_formula(formula)
   # [, -1] drops firts columns full of ones which is the result of sparse model matrix
@@ -48,16 +53,3 @@ xgboost_model_fn <- function(train_data, formula, hyperparameters) {
 random_forest_model_fn <- function(train_data, formula, hyperparameters) {
    print("Training random forest")
 }
-
-# model_fit <- function(model_name, train_data, formula, hyperparameters = list()) {
-#   if (model_name == 'svm')
-#     return(svm_model_fn(train_data, formula, hyperparameters))
-#   else if (model_name == 'xgboost')
-#     return(xgboost_model_fn())
-#   else if (model_name == 'logistic-regression')
-#     return(logistic_regression_model_fn())
-#   else if (model_name == 'random-forest')
-#     return(random_forest_model_fn())
-#   else
-#     stop(cat(paste0("Error: Unsupported model type! Provided model name: ", model_name, ". Supported models: svm, xgboost, logistic-regression, random-forest.")))
-# }

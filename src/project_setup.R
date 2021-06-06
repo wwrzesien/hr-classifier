@@ -25,6 +25,8 @@ library(groupdata2) # fold()
 library(knitr)      # kable() : formats the output as a table
 library(glmnet)
 library(randomForest)
+library(mice)       # MICE imputation
+library(mi)       # multiple imputation
 
 # Enable parallelization
 library(doParallel)
