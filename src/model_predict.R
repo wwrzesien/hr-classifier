@@ -10,3 +10,10 @@ model_predict <- function(test_data, model, formula, hyperparameters, train_data
   # Return second column
   return(probabilities[[2]])
 }
+
+xgboost_predict_fn <- function(test_data, model, formula, hyperparameters, train_data) {
+  predict(object = model,
+          newdata = sparse.model.matrix(as.formula(formula), data = test_data)[, -1],
+          allow.new.levels = TRUE,
+          probability = TRUE)
+}
