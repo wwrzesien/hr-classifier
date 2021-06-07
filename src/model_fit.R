@@ -26,7 +26,7 @@ svm_model_fn <- function(train_data, formula, hyperparameters) {
   e1071::svm(formula = formula, 
               data = train_data,
               type = 'C-classification',
-              # class.weights = model_weights,
+              class.weights = model_weights,
               kernel = hyperparameters[["kernel"]],
               cost = hyperparameters[["cost"]],
               probability = TRUE)
@@ -39,6 +39,7 @@ lg_model_fn <- function(train_data, formula, hyperparameters) {
     family = "binomial",
     use_rose = FALSE,
     use_weights = FALSE,
+    dummy_model = NULL,
     hyperparameters = hyperparameters
   )
   
@@ -48,19 +49,28 @@ lg_model_fn <- function(train_data, formula, hyperparameters) {
     train_data <-ROSE(formula , data = train_data)$data
   }
   
+  # Check if dummy vars need to be applied 
+  if (!is.null(hyperparameters[["dummy_model"]])) {
+    print("Training xgboost - use dummyVars")
+    train_data <- train_data %>% add_dummy_vars(hyperparameters[["dummy_model"]])
+  }
+
   # Weight balancing. Error: variable lengths differ (found for '(weights)')
-  model_weights = NULL
   if (hyperparameters[["use_weights"]]) {
     print("Training logisitic regression - use weights")
-    model_weights <- calc_weights(train_data)$model_weights
+    weights <- calc_weights(train_data)
+
+    return(stats::glm(
+      formula = formula,
+      data = train_data,
+      weights = weights$model_weights,
+      family = hyperparameters[["family"]]))
   }
 
   stats::glm(
     formula = formula,
     data = train_data,
-    weights = model_weights,
-    family = hyperparameters[["family"]]
-  )
+    family = hyperparameters[["family"]])
 }
 
 xgboost_model_fn <- function(train_data, formula, hyperparameters) {

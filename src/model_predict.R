@@ -21,6 +21,15 @@ model_predict <- function(test_data, model, formula, hyperparameters, train_data
 }
 
 lg_predict_fn <- function(test_data, model, formula, hyperparameters, train_data){
+  hyperparameters <- cvms::update_hyperparameters(
+    dummy_model = NULL,
+    hyperparameters = hyperparameters
+  )
+  # Check if dummy vars need to be applied 
+  if (!is.null(hyperparameters[["dummy_model"]])) {
+    test_data <- test_data %>% add_dummy_vars(hyperparameters[["dummy_model"]])
+  }
+  
   stats::predict(
     object = model,
     newdata = test_data,
@@ -52,7 +61,7 @@ forest_predict_fn <- function(test_data, model, formula, hyperparameters, train_
   if (!is.null(hyperparameters[["dummy_model"]])) {
     test_data <- test_data %>% add_dummy_vars(hyperparameters[["dummy_model"]])
   }
-  
+
   stats::predict(
     object = model,
     newdata = test_data,
