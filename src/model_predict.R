@@ -4,7 +4,7 @@ model_predict <- function(test_data, model, formula, hyperparameters, train_data
     hyperparameters = hyperparameters
   )
   # Check if dummy vars need to be applied 
-  if (!is.null(dummy_model)) {
+  if (!is.null(hyperparameters[["dummy_model"]])) {
     test_data <- test_data %>% add_dummy_vars(hyperparameters[["dummy_model"]])
   }
   
@@ -26,7 +26,7 @@ xgboost_predict_fn <- function(test_data, model, formula, hyperparameters, train
     hyperparameters = hyperparameters
   )
   # Check if dummy vars need to be applied 
-  if (!is.null(dummy_model)) {
+  if (!is.null(hyperparameters[["dummy_model"]])) {
     test_data <- test_data %>% add_dummy_vars(hyperparameters[["dummy_model"]])
   }
   

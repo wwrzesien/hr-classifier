@@ -4,8 +4,8 @@ transform_types <- function(df, categorical_var_names=NULL, intiger_var_names=NU
   }
 
   for (i in names(df)) {
-    if (i %in% categorical_var_names) {
-      df[[i]] <- as.factor(df[[i]])
+    if (i %in% names(categorical_var_names)) {
+      df[[i]] <- factor(df[[i]], levels=categorical_var_names[[i]])
     } else if (i %in% intiger_var_names) {
       df[[i]] <- as.integer(df[[i]])
     }

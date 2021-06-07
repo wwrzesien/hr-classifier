@@ -32,7 +32,7 @@ xgboost_model_fn <- function(train_data, formula, hyperparameters) {
   )
 
   # Check if dummy vars need to be applied 
-  if (!is.null(dummy_model)) {
+  if (!is.null(hyperparameters[["dummy_model"]])) {
     train_data <- train_data %>% add_dummy_vars(hyperparameters[["dummy_model"]])
   }
   # Extract data defined by simple formula (only wiht "+" operators)

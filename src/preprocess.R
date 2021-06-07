@@ -5,7 +5,7 @@ preprocess_fn <- function(train_data, test_data, formula, hyperparameters) {
   )
   base_imputation_model = 'not applied'
 
-  if (!is.null(base_imputation)) {
+  if (!is.null(hyperparameters[["base_imputation"]])) {
     mode_col_list <- list(city='mode', 
                           gender='mode', 
                           relevent_experience='mode', 
