@@ -1,11 +1,12 @@
 preprocess_fn <- function(train_data, test_data, formula, hyperparameters) {
   hyperparameters <- cvms::update_hyperparameters(
     base_imputation = TRUE,
+    remove_missing_values = FALSE,
     hyperparameters = hyperparameters
   )
   base_imputation_model = 'not applied'
 
-  if (!is.null(hyperparameters[["base_imputation"]])) {
+  if (hyperparameters[["base_imputation"]]) {
     mode_col_list <- list(city='mode', 
                           gender='mode', 
                           relevent_experience='mode', 
@@ -26,7 +27,12 @@ preprocess_fn <- function(train_data, test_data, formula, hyperparameters) {
     # Preprocessing pipeline
     train_data <- train_data %>% base_imputation(base_imputation_model)
     test_data <- test_data %>% base_imputation(base_imputation_model)
+  }
 
+  if (hyperparameters[["remove_missing_values"]]) {
+    # Preprocessing pipeline
+    train_data <- train_data %>% remove_missing_vals
+    test_data <- test_data %>% remove_missing_vals
   }
 
   # Create data frame with applied preprocessing parameters
