@@ -198,10 +198,11 @@ cv_result <- cross_validate_fn(
   preprocess_fn = preprocess_fn,
   hyperparameters = list(
     "nthread" = c(JOB_CORES),
-    "nround" = c(4, 10),
-    "max_depth" = c( 5, 10, 50),
+    "nround" = c(4),
+    "max_depth" = c( 5),
     "dummy_model" = list(dummy_model),
-    "use_rose" = FALSE
+    "use_rose" = c(TRUE, FALSE),
+    "use_imputation" = c(TRUE, FALSE)
   ),
   fold_cols = c(".folds"),
   type = "binomial",
