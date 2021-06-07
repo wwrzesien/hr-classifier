@@ -79,6 +79,13 @@
       "Repository": "CRAN",
       "Hash": "cc151930e20e16427bc3d0daec62b4a9"
     },
+    "ROSE": {
+      "Package": "ROSE",
+      "Version": "0.0-3",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "3ef293523a1555cf1c3265f94545ea67"
+    },
     "Rcpp": {
       "Package": "Rcpp",
       "Version": "1.0.6",

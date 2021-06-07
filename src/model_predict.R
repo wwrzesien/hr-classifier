@@ -20,6 +20,13 @@ model_predict <- function(test_data, model, formula, hyperparameters, train_data
   return(probabilities[[2]])
 }
 
+lg_predict_fn <- function(test_data, model, formula, hyperparameters, train_data){
+  stats::predict(
+    object = model,
+    newdata = test_data,
+    type = "response")
+}
+
 xgboost_predict_fn <- function(test_data, model, formula, hyperparameters, train_data) {
   hyperparameters <- cvms::update_hyperparameters(
     dummy_model = NULL,
@@ -35,3 +42,11 @@ xgboost_predict_fn <- function(test_data, model, formula, hyperparameters, train
           allow.new.levels = TRUE,
           probability = TRUE)
 }
+
+forest_predict_fn <- function(test_data, model, formula, hyperparameters, train_data){
+  stats::predict(
+    object = model,
+    newdata = test_data,
+    type = "response")
+}
+

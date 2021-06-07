@@ -27,6 +27,7 @@ library(glmnet)
 library(randomForest)
 library(mice)       # MICE imputation
 library(mi)       # multiple imputation
+library(ROSE)
 
 # Enable parallelization
 library(doParallel)
@@ -34,3 +35,4 @@ registerDoParallel(JOB_CORES)
 
 # Set seed
 set.seed(1)
+
