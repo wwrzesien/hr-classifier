@@ -90,7 +90,6 @@ xgboost_model_fn <- function(train_data, formula, hyperparameters) {
   # ROSE balancing
   if (hyperparameters[["use_rose"]]) {
     print("Training xgboost - use ROSE")
-    stop("rose")
     train_data <-ROSE(formula , data = train_data)$data
   }
 
