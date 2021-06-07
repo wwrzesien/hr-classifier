@@ -4,45 +4,61 @@ svm_model_fn <- function(train_data, formula, hyperparameters) {
   hyperparameters <- cvms::update_hyperparameters(
     kernel = "radial",
     cost = 1,
+    use_rose = FALSE,
+    use_weights = FALSE,
     hyperparameters = hyperparameters
   )
   
   # ROSE balancing
-  train_data <-ROSE(formula , data = train_data)$data
+  if (hyperparameters[["use_rose"]]) {
+    print("Training SVM - use ROSE")
+    train_data <-ROSE(formula , data = train_data)$data
+  }
   
-  # Weight balancing
-  weights = c("0"= nrow(train_folded) / (sum(train_folded$target == "0") *2),
-              "1"=nrow(train_folded) / (sum(train_folded$target == "1") *2))
+  # Weight balancing. 
+  model_weights = NULL
+  if (hyperparameters[["use_weights"]]) {
+    print("Training lSVM - use weights")
+    weights <- (train_data)
+    model_weights = c("0"=weights$weight_0, "1"=weights$weight_1)
+  }
   
   e1071::svm(formula = formula, 
               data = train_data,
               type = 'C-classification',
-              # class.weights = weights,
+              # class.weights = model_weights,
               kernel = hyperparameters[["kernel"]],
               cost = hyperparameters[["cost"]],
               probability = TRUE)
 }
 
 lg_model_fn <- function(train_data, formula, hyperparameters) {
-   print("Training logisitic regression")
+  print("Training logisitic regression - start")
   
   hyperparameters <- cvms::update_hyperparameters(
     family = "binomial",
+    use_rose = FALSE,
+    use_weights = FALSE,
     hyperparameters = hyperparameters
   )
   
   # ROSE balancing
-  train_data <-ROSE(formula , data = train_data)$data
+  if (hyperparameters[["use_rose"]]) {
+    print("Training logisitic regression - use ROSE")
+    train_data <-ROSE(formula , data = train_data)$data
+  }
   
   # Weight balancing. Error: variable lengths differ (found for '(weights)')
-  model_weights <- ifelse(train_data$target == "0",
-                          nrow(train_data) / (sum(train_data$target == "0") * 2),
-                          nrow(train_data) / (sum(train_data$target == "1") * 2))
+  model_weights = NULL
+  if (hyperparameters[["use_weights"]]) {
+    print("Training logisitic regression - use weights")
+    model_weights <- calc_weights(train_data)$model_weights
+  }
 
   stats::glm(
     formula = formula,
     data = train_data,
-    # weights = model_weights,
+    weights = model_weights,
     family = hyperparameters[["family"]]
   )
 }
@@ -56,16 +72,24 @@ xgboost_model_fn <- function(train_data, formula, hyperparameters) {
     nround = 2,
     nthread = 2,
     dummy_model = NULL,
+    use_rose = FALSE,
+    use_weights = FALSE,
     hyperparameters = hyperparameters
   )
   
   # ROSE balancing
-  train_data <-ROSE(formula , data = train_data)$data
+  if (hyperparameters[["use_rose"]]) {
+    print("Training xgboost - use ROSE")
+    stop("rose")
+    train_data <-ROSE(formula , data = train_data)$data
+  }
 
   # Check if dummy vars need to be applied 
   if (!is.null(hyperparameters[["dummy_model"]])) {
+    print("Training xgboost - use dummyVars")
     train_data <- train_data %>% add_dummy_vars(hyperparameters[["dummy_model"]])
   }
+
   # Extract data defined by simple formula (only wiht "+" operators)
   destructed_formula <- destruct_formula(formula)
   # [, -1] drops firts columns full of ones which is the result of sparse model matrix
@@ -87,20 +111,35 @@ forest_model_fn <- function(train_data, formula, hyperparameters) {
   
   hyperparameters <- cvms::update_hyperparameters(
     ntree = 100,
+    use_rose = FALSE,
+    use_weights = FALSE,
+    dummy_model = NULL,
     hyperparameters = hyperparameters
   )
+
+    # ROSE balancing
+  if (hyperparameters[["use_rose"]]) {
+    print("Training random forest - use ROSE")
+    train_data <-ROSE(formula , data = train_data)$data
+  }
   
-  # ROSE balancing
-  train_data <-ROSE(formula , data = train_data)$data
-  
-  # Weight balancing
-  weights = c("0"= nrow(train_folded) / (sum(train_folded$target == "0") *2),
-              "1"= nrow(train_folded) / (sum(train_folded$target == "1") *2))
+  # Weight balancing. Error: variable lengths differ (found for '(weights)')
+  model_weights = NULL
+  if (hyperparameters[["use_weights"]]) {
+    print("Training random forest - use weights")
+    model_weights <- calc_weights(train_data)$model_weights
+  }
+
+    # Check if dummy vars need to be applied 
+  if (!is.null(hyperparameters[["dummy_model"]])) {
+    print("Training random forest - use dummyVars")
+    train_data <- train_data %>% add_dummy_vars(hyperparameters[["dummy_model"]])
+  }
   
   randomForest(
     formula = formula,
     data = train_data,
-    # classwt = weights,
+    classwt = model_weights,
     ntree = hyperparameters[["ntree"]]
   )
 }
