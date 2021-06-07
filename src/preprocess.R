@@ -1,20 +1,36 @@
 preprocess_fn <- function(train_data, test_data, formula, hyperparameters) {
-  
-  # Standardize the training_hours column 
-  
-  # Get the mean and standard deviation from the train_data
-  mean_th <- mean(train_data[["training_hours"]])
-  sd_th <- sd(train_data[["training_hours"]])
+  hyperparameters <- cvms::update_hyperparameters(
+    base_imputation = TRUE,
+    hyperparameters = hyperparameters
+  )
+  base_imputation_model = 'not applied'
 
-  # Standardize both train_data and test_data
-  train_data[["training_hours"]] <- (train_data[["training_hours"]] - mean_th) / sd_th
-  test_data[["training_hours"]] <- (test_data[["training_hours"]] - mean_th) / sd_th
+  if (!is.null(hyperparameters[["base_imputation"]])) {
+    mode_col_list <- list(city='mode', 
+                          gender='mode', 
+                          relevent_experience='mode', 
+                          enrolled_university='mode',
+                          education_level='mode',
+                          major_discipline='mode',
+                          experience='mode',
+                          company_size='mode',
+                          company_type='mode',
+                          last_new_job='mode')
+    mean_col_list <- list(training_hours='mean', 
+                          city_development_index='mean')
+
+
+    base_imputation_model <- create_base_imputation_model(train_data, 
+                                                          append(mode_col_list, mean_col_list))
+
+    # Preprocessing pipeline
+    train_data <- train_data %>% base_imputation(base_imputation_model)
+    test_data <- test_data %>% base_imputation(base_imputation_model)
+
+  }
 
   # Create data frame with applied preprocessing parameters
-  preprocess_parameters <- data.frame(
-    "Measure" = c("Mean", "SD"),
-    "training_hours" = c(mean_th, sd_th)
-  )
+  preprocess_parameters <- data.frame(base_imputation_model=base_imputation_model)
   
   # Return list with these names
   list("train" = train_data,

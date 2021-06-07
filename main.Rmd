@@ -25,6 +25,9 @@ source('./src/model_evaluate.R')
 source('./src/cross_validate.R')
 source('./src/preprocess.R')
 source('./src/destruct_formula.R')
+source('./src/normalize_data.R')
+source('./src/utils/mode.R')
+source('./src/base_imputation.R')
 ```
 
 
@@ -46,55 +49,41 @@ print(test_base)
 show_base_stats(train_base)
 ```
 
+# Normalize data
+```{r}
+normalization_model <- create_normalize_data_model(train_base, c("training_hours"))
+
+train_normalized <- train_base %>% normalize_data(normalization_model)
+test_normalized <- test_base %>% normalize_data(normalization_model)
+```
+
 # Transform data
 ```{r}
-  categorical_vars_names <- c('city', 
-                              'gender', 
-                              'relevent_experience', 
-                              'enrolled_university',
-                              'education_level',
-                              'major_discipline',
-                              'experience',
-                              'company_size',
-                              'company_type',
-                              'last_new_job')
+# List of categorical with their unque values
+categorical_vars_names <- list(city = unique(union(train_base$city, test_base$city)), 
+                            gender = unique(union(train_base$gender, test_base$gender)), 
+                            relevent_experience = unique(union(train_base$relevent_experience, test_base$relevent_experience)), 
+                            enrolled_university = unique(union(train_base$enrolled_university, test_base$enrolled_university)),
+                            education_level = unique(union(train_base$education_level, test_base$education_level)),
+                            major_discipline = unique(union(train_base$major_discipline, test_base$major_discipline)),
+                            experience = unique(union(train_base$experience, test_base$experience)),
+                            company_size = unique(union(train_base$company_size, test_base$company_size)),
+                            company_type = unique(union(train_base$company_type, test_base$company_type)),
+                            last_new_job = unique(union(train_base$last_new_job, test_base$last_new_job)))
 
-train_transformed <- train_base %>% transform_types(categorical_vars_names) %>% remove_missing_vals
-test_transformed <- test_base %>% transform_types(categorical_vars_names) %>% remove_missing_vals
+#train_transformed <- train_normalized %>% transform_types(categorical_vars_names) %>% remove_missing_vals
+#test_transformed <- test_normalized %>% transform_types(categorical_vars_names) %>% remove_missing_vals
+train_transformed <- train_normalized %>% transform_types(categorical_vars_names)
+test_transformed <- test_normalized %>% transform_types(categorical_vars_names)
 
 # Remove useless columns
-train_transformed <- train_transformed %>% dplyr::select(!c("enrollee_id", "city"))
-test_transformed <- test_transformed %>% dplyr::select(!c("enrollee_id", "city"))
-
-summary(train_transformed)
-skim(train_transformed)
-print(train_transformed)
-```
-# Add dummy vars
-```{r}
-# model_vars <- c('gender', 
-#                 'relevent_experience', 
-#                 'education_level',
-#                 'major_discipline',
-#                 'experience',
-#                 'company_type',
-#                 'last_new_job')
-# # Dropp city !!!!
-# model_formula <- create_model_formula('target', model_vars)
-# model_formula < as.formula('~ .')
-dummy_model <- dummyVars('~ .', data=train_transformed, fullRank=TRUE)
-
-train_dummy <- train_transformed %>% add_dummy_vars(dummy_model)
-test_dummy <- test_transformed %>% add_dummy_vars(dummy_model)
-print(train_dummy)
+train_transformed <- train_transformed %>% dplyr::select(!c("enrollee_id"))
+test_transformed <- test_transformed %>% dplyr::select(!c("enrollee_id"))
 ```
 
 # Create folds for cross validation
 ```{r}
-# Skip dummy vars for now
-# train_folded <- train_dummy %>% divide_into_folds
-
-train_folded <- train_dummy %>% divide_into_folds
+train_folded <- train_transformed %>% divide_into_folds
 print(train_folded)
 ``` 
 
@@ -116,7 +105,7 @@ cv_result <- cross_validate_fn(
   preprocess_fn = preprocess_fn,
   hyperparameters = list(
     "kernel" = c("linear", "radial"),
-    "cost" = c(10, 5, 10)
+    "cost" = c(1, 5, 10)
   ),
   fold_cols = c(".folds"),
   type = "binomial",
@@ -161,9 +150,13 @@ plot(best_result$ROC[[1]]$.folds)
 
 ### Train the best model on the whole training dataset
 ```{r}
+best_model_formula <- as.formula(paste(c(best_result$Dependent, best_result$Fixed), collapse = ' ~ '))
+
+preprocessed_data <- preprocess_fn(train_transformed, test_transformed, best_model_formula, best_result$HParams[[1]])
+
 best_model <- svm_model_fn(
-  train_data = train_transformed,
-  formula = as.formula(paste(c(best_result$Dependent, best_result$Fixed), collapse = ' ~ ')),
+  train_data = preprocessed_data$train,
+  formula = best_model_formula,
   hyperparameters = best_result$HParams[[1]]
 )
 ```
@@ -171,14 +164,17 @@ best_model <- svm_model_fn(
 ### Predict on test dataset
 ```{r}
 predict <- model_predict(
-  test_data = test_transformed[-12], 
-  model = best_model
+  formula = best_model_formula,
+  test_data = preprocessed_data$test,
+  train_data = preprocessed_data$train,
+  model = best_model,
+  hyperparameters = best_result$HParams[[1]]
 )
 
-test_transformed[["predicted_class"]] <- predict
+preprocessed_data$test[["predicted_class"]] <- predict
 
 eval <- model_evaluate(
-  test_set = test_transformed, 
+  test_set = preprocessed_data$test, 
   target_col = "target", 
   prediction_cols = "predicted_class"
 )
@@ -191,16 +187,13 @@ plot_confusion_matrix(eval, add_sums = TRUE)
 ```
 ### ROC
 ```{r}
-plot(best_result$ROC[[1]]$.folds)
+plot(eval$ROC[[1]])
 ```
 
 # Train XGBoost model and predict
 ```{r}
-independent_var_vec <- names(train_dummy)
-# Remove 'target' from vector
-independent_var_vec <- independent_var_vec[! independent_var_vec %in% c('target')]
-
-model_formula <- create_model_formula('target', independent_var_vec)
+model_formula <- create_model_formula('target', '.')
+dummy_model <- dummyVars('~ .', data=train_transformed, fullRank=TRUE)
 
 train_folded <- train_dummy %>% divide_into_folds
 
@@ -209,10 +202,12 @@ cv_result <- cross_validate_fn(
   formulas = c(model_formula),
   model_fn = xgboost_model_fn,
   predict_fn = xgboost_predict_fn,
+  preprocess_fn = preprocess_fn,
   hyperparameters = list(
     "nthread" = c(JOB_CORES),
     "nround" = c(1, 4, 10, 100),
-    "max_depth" = c(1, 5, 10, 50, 100)
+    "max_depth" = c(1, 5, 10, 50, 100),
+    "dummy_model" = list(dummy_model)
   ),
   fold_cols = c(".folds"),
   type = "binomial",
@@ -230,19 +225,20 @@ cv_result %>%
   dplyr::mutate(`Model ID` = 1:nrow(cv_result)) %>% 
   dplyr::arrange(dplyr::desc(AUC)) %>% 
   select_definitions(additional_includes = c("Balanced Accuracy", "F1", "MCC", "Model ID", "AUC")) %>%
-  dplyr::select(-c('Fixed', 'Dependent')) %>% 
+  dplyr::select(-c('Fixed', 'Dependent', 'dummy_model')) %>% 
   kable(digits = 5)
 ```
 
 ### Best result
 ```{r}
-best_model_id <- 1
+best_model_id <- 7
 best_result <- cv_result %>% dplyr::slice(best_model_id)
 
 best_result
 print(best_result$HParams[[1]])
 print(best_result$Fixed)
 print(best_result$Dependent)
+print(best_result$Preprocess)
 ```
 
 ### Confusion matrix
@@ -259,8 +255,10 @@ plot(best_result$ROC[[1]]$.folds)
 ```{r}
 best_model_formula <- as.formula(paste(c(best_result$Dependent, best_result$Fixed), collapse = ' ~ '))
 
+preprocessed_data <- preprocess_fn(train_transformed, test_transformed, best_model_formula, best_result$HParams[[1]])
+
 best_model <- xgboost_model_fn(
-  train_data = train_dummy,
+  train_data = preprocessed_data$train,
   formula = best_model_formula,
   hyperparameters = best_result$HParams[[1]]
 )
@@ -270,14 +268,16 @@ best_model <- xgboost_model_fn(
 ```{r}
 predict <- xgboost_predict_fn(
   formula = best_model_formula,
-  test_data = test_dummy, 
-  model = best_model
+  test_data = preprocessed_data$test, 
+  model = best_model,
+  hyperparameters = best_result$HParams[[1]]
 )
 
-test_dummy[["predicted_class"]] <- predict
+preprocessed_data$test[["predicted_class"]] <- predict
+
 
 eval <- model_evaluate(
-  test_set = test_dummy, 
+  test_set = preprocessed_data$test, 
   target_col = "target", 
   prediction_cols = "predicted_class"
 )
