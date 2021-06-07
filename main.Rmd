@@ -27,6 +27,7 @@ source('./src/preprocess.R')
 source('./src/destruct_formula.R')
 source('./src/normalize_data.R')
 source('./src/utils/mode.R')
+source('./src/utils/calc_weights.R')
 source('./src/base_imputation.R')
 ```
 
@@ -89,13 +90,7 @@ print(train_folded)
 
 # Train SVM model and predict
 ```{r}
-independent_var_vec <- names(train_transformed)
-# Remove 'target' from vector
-independent_var_vec <- independent_var_vec[! independent_var_vec %in% c('target')]
-
-model_formula <- create_model_formula('target', independent_var_vec)
-
-train_folded <- train_transformed %>% divide_into_folds
+model_formula <- create_model_formula('target', '.')
 
 cv_result <- cross_validate_fn(
   data = train_folded,
@@ -195,8 +190,6 @@ plot(eval$ROC[[1]])
 model_formula <- create_model_formula('target', '.')
 dummy_model <- dummyVars('~ .', data=train_transformed, fullRank=TRUE)
 
-train_folded <- train_dummy %>% divide_into_folds
-
 cv_result <- cross_validate_fn(
   data = train_folded,
   formulas = c(model_formula),
@@ -205,9 +198,10 @@ cv_result <- cross_validate_fn(
   preprocess_fn = preprocess_fn,
   hyperparameters = list(
     "nthread" = c(JOB_CORES),
-    "nround" = c(1, 4, 10, 100),
-    "max_depth" = c(1, 5, 10, 50, 100),
-    "dummy_model" = list(dummy_model)
+    "nround" = c(4, 10),
+    "max_depth" = c( 5, 10, 50),
+    "dummy_model" = list(dummy_model),
+    "use_rose" = FALSE
   ),
   fold_cols = c(".folds"),
   type = "binomial",
@@ -231,7 +225,7 @@ cv_result %>%
 
 ### Best result
 ```{r}
-best_model_id <- 7
+best_model_id <- 4
 best_result <- cv_result %>% dplyr::slice(best_model_id)
 
 best_result
@@ -295,25 +289,23 @@ plot(eval$ROC[[1]])
 
 # Train logistic regression model and predict
 ```{r}
-independent_var_vec <- names(train_dummy)
-# Remove 'target' from vector
-independent_var_vec <- independent_var_vec[! independent_var_vec %in% c('target')]
-
-model_formula <- create_model_formula('target', independent_var_vec)
-
-train_folded <- train_dummy %>% divide_into_folds
+model_formula <- create_model_formula('target', '.')
+dummy_model <- dummyVars('~ .', data=train_transformed, fullRank=TRUE)
 
 lg_result <- cross_validate_fn(
   data = train_folded,
   formulas = model_formula,
   model_fn = lg_model_fn,
   predict_fn = lg_predict_fn,
+  preprocess_fn = preprocess_fn,
   hyperparameters = list(
-    "family" = c("binomial")
+    "family" = c("binomial"),
+    "dummy_model" = list(dummy_model),
+    "use_weights" = TRUE
   ),
   fold_cols = c(".folds"),
   type = "binomial",
-  parallel = TRUE,
+  parallel = FALSE,
   verbose = TRUE
 )
 
@@ -354,8 +346,10 @@ plot(best_result$ROC[[1]]$.folds)
 ```{r}
 best_model_formula <- as.formula(paste(c(best_result$Dependent, best_result$Fixed), collapse = ' ~ '))
 
+preprocessed_data <- preprocess_fn(train_transformed, test_transformed, best_model_formula, best_result$HParams[[1]])
+
 best_model <- lg_model_fn(
-  train_data = train_dummy,
+  train_data = preprocessed_data$train,
   formula = best_model_formula,
   hyperparameters = best_result$HParams[[1]]
 )
@@ -365,14 +359,16 @@ best_model <- lg_model_fn(
 ```{r}
 predict <- lg_predict_fn(
   formula = best_model_formula,
-  test_data = test_dummy, 
-  model = best_model
+  test_data = preprocessed_data$test,
+  train_data = preprocessed_data$train,
+  model = best_model,
+  hyperparameters = best_result$HParams[[1]]
 )
 
-test_dummy[["predicted_class"]] <- predict
+preprocessed_data$test[["predicted_class"]] <- predict
 
 eval <- model_evaluate(
-  test_set = test_dummy, 
+  test_set = preprocessed_data$test, 
   target_col = "target", 
   prediction_cols = "predicted_class"
 )
@@ -390,13 +386,9 @@ plot(eval$ROC[[1]])
 
 # Train Random Forest model and predict
 ```{r}
-independent_var_vec <- names(train_transformed)
-# Remove 'target' from vector
-independent_var_vec <- independent_var_vec[! independent_var_vec %in% c('target')]
-
-model_formula <- create_model_formula('target', independent_var_vec)
-
-train_folded <- train_transformed %>% divide_into_folds
+model_formula <- create_model_formula('target', '.')
+# dummy vars are needed for city feature (random forest handles up to 53 categories in categorical variables)
+dummy_model <- dummyVars('~ .', data=train_transformed, fullRank=TRUE)
 
 # parameters to test: ntree: (100, 250, 500, 1000)
 
@@ -405,8 +397,11 @@ forest_result <- cross_validate_fn(
   formulas = model_formula,
   model_fn = forest_model_fn,
   predict_fn = forest_predict_fn,
+  preprocess_fn = preprocess_fn,
   hyperparameters = list(
-    "ntree" = 2
+    "ntree" = 2,
+    "dummy_model" = list(dummy_model),
+    "use_rose" = FALSE
   ),
   fold_cols = c(".folds"),
   type = "binomial",
@@ -421,10 +416,10 @@ forest_result
 ### Balanced Accuracy, F1, MCC, Model ID, AUC
 ```{r}
 forest_result %>% 
-  dplyr::mutate(`Model ID` = 1:nrow(lg_result)) %>% 
+  dplyr::mutate(`Model ID` = 1:nrow(forest_result)) %>% 
   dplyr::arrange(dplyr::desc(AUC)) %>% 
   select_definitions(additional_includes = c("Balanced Accuracy", "F1", "MCC", "Model ID", "AUC")) %>%
-  dplyr::select(-c('Fixed', 'Dependent')) %>% 
+  dplyr::select(-c('Fixed', 'Dependent', 'dummy_model')) %>% 
   kable(digits = 5)
 ```
 ### Best result
@@ -452,8 +447,10 @@ plot(best_result$ROC[[1]]$.folds)
 ```{r}
 best_model_formula <- as.formula(paste(c(best_result$Dependent, best_result$Fixed), collapse = ' ~ '))
 
+preprocessed_data <- preprocess_fn(train_transformed, test_transformed, best_model_formula, best_result$HParams[[1]])
+
 best_model <- forest_model_fn(
-  train_data = train_transformed,
+  train_data = preprocessed_data$train,
   formula = best_model_formula,
   hyperparameters = best_result$HParams[[1]]
 )
@@ -463,15 +460,15 @@ best_model <- forest_model_fn(
 ```{r}
 predict <- forest_predict_fn(
   formula = best_model_formula,
-  test_data = test_transformed, 
+  test_data = preprocessed_data$test, 
   model = best_model
 )
 
-test_dummy[["predicted_class"]] <- predict
+preprocessed_data$test[["predicted_class"]] <- predict
 predict
 
 eval <- model_evaluate(
-  test_set = test_transformed, 
+  test_set = preprocessed_data$test, 
   target_col = "target", 
   prediction_cols = "predicted_class"
 )
