@@ -119,7 +119,9 @@ forest_model_fn <- function(train_data, formula, hyperparameters) {
    print("Training random forest")
   
   hyperparameters <- cvms::update_hyperparameters(
-    ntree = 100,
+    ntree = 1000,
+    mtry = NULL,
+    nodesize = 1,
     use_rose = FALSE,
     use_weights = FALSE,
     dummy_model = NULL,
@@ -145,10 +147,23 @@ forest_model_fn <- function(train_data, formula, hyperparameters) {
     train_data <- train_data %>% add_dummy_vars(hyperparameters[["dummy_model"]])
   }
   
+  if (hyperparameters[["mtry"]] != 'DEFAULT') {
+    print("Training random forest - use non default mtry")
+    randomForest(
+      formula = formula,
+      data = train_data,
+      classwt = model_weights,
+      ntree = hyperparameters[["ntree"]],
+      mtry = hyperparameters[["mtry"]],
+      nodesize = hyperparameters[["nodesize"]]
+    )
+  }
+  
   randomForest(
     formula = formula,
     data = train_data,
     classwt = model_weights,
-    ntree = hyperparameters[["ntree"]]
+    ntree = hyperparameters[["ntree"]],
+    nodesize = hyperparameters[["nodesize"]]
   )
 }
