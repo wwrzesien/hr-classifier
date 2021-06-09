@@ -120,7 +120,7 @@ forest_model_fn <- function(train_data, formula, hyperparameters) {
   
   hyperparameters <- cvms::update_hyperparameters(
     ntree = 1000,
-    mtry = NULL,
+    mtry = 'DEFAULT',
     nodesize = 1,
     use_rose = FALSE,
     use_weights = FALSE,
@@ -130,25 +130,21 @@ forest_model_fn <- function(train_data, formula, hyperparameters) {
 
     # ROSE balancing
   if (hyperparameters[["use_rose"]]) {
-    print("Training random forest - use ROSE")
     train_data <-ROSE(formula , data = train_data)$data
   }
   
   # Weight balancing. Error: variable lengths differ (found for '(weights)')
   model_weights = NULL
   if (hyperparameters[["use_weights"]]) {
-    print("Training random forest - use weights")
     model_weights <- calc_weights(train_data)$model_weights
   }
 
     # Check if dummy vars need to be applied 
   if (!is.null(hyperparameters[["dummy_model"]])) {
-    print("Training random forest - use dummyVars")
     train_data <- train_data %>% add_dummy_vars(hyperparameters[["dummy_model"]])
   }
   
   if (hyperparameters[["mtry"]] != 'DEFAULT') {
-    print("Training random forest - use non default mtry")
     randomForest(
       formula = formula,
       data = train_data,
@@ -157,13 +153,13 @@ forest_model_fn <- function(train_data, formula, hyperparameters) {
       mtry = hyperparameters[["mtry"]],
       nodesize = hyperparameters[["nodesize"]]
     )
+  } else {
+    randomForest(
+      formula = formula,
+      data = train_data,
+      classwt = model_weights,
+      ntree = hyperparameters[["ntree"]],
+      nodesize = hyperparameters[["nodesize"]]
+    )
   }
-  
-  randomForest(
-    formula = formula,
-    data = train_data,
-    classwt = model_weights,
-    ntree = hyperparameters[["ntree"]],
-    nodesize = hyperparameters[["nodesize"]]
-  )
 }
