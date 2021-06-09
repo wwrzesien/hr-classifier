@@ -6,8 +6,8 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
-JOB_CORES = parallel::detectCores()
-
+#JOB_CORES = parallel::detectCores()
+JOB_CORES = 12
 source('./src/project_setup.R')
 ```
 
@@ -81,7 +81,6 @@ test_transformed <- test_normalized %>% transform_types(categorical_vars_names)
 train_transformed <- train_transformed %>% dplyr::select(!c("enrollee_id"))
 test_transformed <- test_transformed %>% dplyr::select(!c("enrollee_id"))
 ```
-
 # Create folds for cross validation
 ```{r}
 train_folded <- train_transformed %>% divide_into_folds
@@ -100,7 +99,8 @@ cv_result <- cross_validate_fn(
   preprocess_fn = preprocess_fn,
   hyperparameters = list(
     "kernel" = c("linear", "radial"),
-    "cost" = c(1, 5, 10)
+    "cost" = c(1, 2.5, 5),
+    "use_rose" = c(TRUE)
   ),
   fold_cols = c(".folds"),
   type = "binomial",
@@ -124,7 +124,9 @@ cv_result %>%
 
 ### Best result
 ```{r}
-best_model_id <- 1
+saveRDS(cv_result, paste(c("results/svm/cv_result_svm_boruta", as.character(format(Sys.time(), "%Y-%m-%d_%H:%M:%S"))), collapse = '_'))
+
+best_model_id <- 2
 best_result <- cv_result %>% dplyr::slice(best_model_id)
 
 best_result
@@ -154,6 +156,8 @@ best_model <- svm_model_fn(
   formula = best_model_formula,
   hyperparameters = best_result$HParams[[1]]
 )
+
+saveRDS(best_model, paste(c("results/svm/best_svm_boruta", as.character(format(Sys.time(), "%Y-%m-%d_%H:%M:%S"))), collapse = '_'))
 ```
 
 ### Predict on test dataset
@@ -400,9 +404,11 @@ forest_result <- cross_validate_fn(
   predict_fn = forest_predict_fn,
   preprocess_fn = preprocess_fn,
   hyperparameters = list(
-    "ntree" = 2,
+    "ntree" = c(200),
+    "mtree" = c('DEFAULT'),
+    "nodesize" = c(10),
     "dummy_model" = list(dummy_model),
-    "use_rose" = FALSE
+    "use_rose" = c(TRUE, FALSE)
   ),
   fold_cols = c(".folds"),
   type = "binomial",
@@ -425,6 +431,8 @@ forest_result %>%
 ```
 ### Best result
 ```{r}
+saveRDS(forest_result, paste(c("results/random_forest/cv_result_rf_200_DEF_10_rose", as.character(format(Sys.time(), "%Y-%m-%d_%H:%M:%S"))), collapse = '_'))
+
 best_model_id <- 1
 best_result <- forest_result %>% dplyr::slice(best_model_id)
 
@@ -455,18 +463,24 @@ best_model <- forest_model_fn(
   formula = best_model_formula,
   hyperparameters = best_result$HParams[[1]]
 )
+
+saveRDS(best_model, paste(c("results/random_forest/best_cv_rf", as.character(format(Sys.time(), "%Y-%m-%d_%H:%M:%S"))), collapse = '_'))
 ```
 
 ### Predict on test dataset
 ```{r}
 predict <- forest_predict_fn(
   formula = best_model_formula,
-  test_data = preprocessed_data$test, 
-  model = best_model
+  test_data = preprocessed_data$test,
+  train_data = preprocessed_data$train,
+  model = best_model,
+  hyperparameters = best_result$HParams[[1]]
 )
 
-preprocessed_data$test[["predicted_class"]] <- predict
-predict
+# randomForest sometimes predict values below 0 (we are using regresion for predicting probabilities), these are values very very close to 0 eg -4.23424e-17
+# and because of that abs func is applied
+preprocessed_data$test[["predicted_class"]] <- abs(predict)
+min(predict)
 
 eval <- model_evaluate(
   test_set = preprocessed_data$test, 
